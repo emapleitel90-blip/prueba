@@ -1,28 +1,31 @@
 # Filo viandas
 
-Primera versión web adaptable al celular para registrar menús, compras, ingredientes y costos.
+Aplicación web adaptable al celular para gestionar menús, compras, ingredientes y costos.
 
 ## Desarrollo
 
-Requiere Node.js 22.12 o superior.
+Node.js 24 LTS recomendado (necesario para las dependencias de pruebas actuales).
 
 ```sh
 npm ci --cache /tmp/filo-npm-cache
 npm run dev -- --port 5173
+npm test
+npm run build
 ```
 
-Compilación: `npm run build`.
+## Funciones
 
-## Alcance actual
+- Productos editables, con unidades kg, g, litro, ml y unidad. Cantidades y precios aceptan coma o punto decimal, sin separadores de miles. Se debe usar la misma unidad en compras y recetas; 900 gramos se cargan como 0,9 kg o 900 g, según el producto.
+- Compras que permiten elegir cualquier producto registrado o crearlo en el momento; cantidades y total calculan el precio por unidad. Categorías libres y fecha editable.
+- Otros gastos sin requisito de ingrediente o cantidad.
+- Edición y eliminación de compras nuevas, ajustando diferencias sobre el stock actual. Se rechazan correcciones que dejarían stock negativo. El costo se actualiza al precio de la compra guardada/editada; eliminar una compra conserva el costo unitario actual, editable en Stock.
+- Los movimientos anteriores a esta actualización conservan sus importes pero no son editables porque no guardaban el vínculo al ingrediente.
+- Recetas editables, precio por vianda y costo de ingredientes/insumos.
+- Producción con descuento proporcional de stock y costos históricos. Las ventas se registran junto con la producción; aún no hay edición posterior de jornadas.
+- Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
-- Ingredientes con cantidades, unidad, costo y mínimo editable.
-- Compras que aumentan stock y actualizan el costo al último precio comprado.
-- Recetas editables con rendimiento, ingredientes y precio de venta.
-- Jornadas con producción y ventas registradas juntas; consumo proporcional y validación de stock.
-- Costos históricos fijados al registrar producción, incluyendo porciones sobrantes.
-- Resumen acumulado con margen antes de otros gastos por menú y resultado estimado general.
-- Exportación JSON de respaldo (importación pendiente).
+## Compartir entre celulares
 
-Los ejemplos están identificados y pueden borrarse desde la interfaz. Los registros se guardan en localStorage por navegador. No hay sincronización, cuentas, backend, instalación PWA ni funcionamiento sin conexión garantizado. No usar como único registro comercial antes de implementar respaldo recuperable y almacenamiento compartido. No se puede corregir una jornada ya registrada desde la interfaz; sí se pueden editar ingredientes y recetas. El precio de venta de cada jornada corresponde a la receta en el momento de registrarla.
+Sin variables de Supabase, funciona localmente por navegador. Para almacenamiento familiar con acceso por correo, configurar `.env.example` en desarrollo o las variables de Vercel, y seguir [supabase/README.md](supabase/README.md). Nunca usar claves secretas en variables VITE_.
 
-Próxima etapa: almacenamiento compartido y acceso familiar, edición de jornadas con reversión de stock, fechas de compras, backups recuperables y vencimientos/lotes.
+Las compras de varios celulares se comparten solo al activar y verificar Supabase. La actualización en otros dispositivos es manual; se detectan conflictos de edición para evitar sobrescrituras silenciosas. No es una PWA ni garantiza funcionamiento sin conexión.
