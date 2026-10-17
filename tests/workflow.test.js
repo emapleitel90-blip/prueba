@@ -2,14 +2,15 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import {report,advice} from '../src/analytics.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.report=report;w.advice=advice;w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
  w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -46,4 +47,8 @@ test('conflicto conserva borrador, bloquea nuevas ediciones y permite recuperar 
 });
 test('backup inválido no reemplaza datos; backup válido es aceptado',()=>{
  const a=app();assert.doesNotThrow(()=>a.w.validateBackup(a.w.currentForTest));assert.throws(()=>a.w.eval('validateBackup({stock:[],recipes:[],days:[],expenses:[{kind:"other",detail:"x",date:"bad",total:-2,qty:0}]})'));
+});
+
+test('resumen mensual permite elegir mes, muestra datos vacíos y jornadas con fecha anterior',()=>{
+ const a=app();a.nav('Hoy');a.set('#day','date','2025-01-12');a.set('#day','made','1');a.set('#day','sold','1');a.submit('#day');assert.equal(a.state().days[0].date,'2025-01-12');a.nav('Resumen');const picker=a.doc.querySelector('#report-month');picker.value='2025-01';picker.dispatchEvent(new a.w.Event('change'));assert.ok(a.doc.body.textContent.includes('Canelones de carne'));assert.ok(a.doc.body.textContent.includes('2025-01-12'));assert.ok(a.doc.body.textContent.includes('Contribución total'));assert.ok(!a.doc.body.textContent.includes('NaN'));
 });

@@ -29,3 +29,11 @@ npm run build
 Sin variables de Supabase, funciona localmente por navegador. Para almacenamiento familiar con acceso por correo, configurar `.env.example` en desarrollo o las variables de Vercel, y seguir [supabase/README.md](supabase/README.md). Nunca usar claves secretas en variables VITE_.
 
 Las compras de varios celulares se comparten solo al activar y verificar Supabase. La actualización en otros dispositivos es manual; se detectan conflictos de edición para evitar sobrescrituras silenciosas. No es una PWA ni garantiza funcionamiento sin conexión.
+
+## Control mensual y orientación comercial
+
+Resumen permite elegir mes y ver ventas registradas, compras/gastos pagados, saldo de movimientos, resultado estimado, producción, ventas y sobrantes. Las ventas se consideran cobradas; aún no hay cuentas por cobrar ni conciliación bancaria. El resultado usa ingredientes consumidos y otros gastos, sin volver a descontar las compras de stock.
+
+El mes en curso se compara hasta el mismo día del mes anterior (o su último día si es más corto). Los meses cerrados se comparan completos. El gráfico de seis meses muestra importes nominales; el volumen vendido y el promedio por día registrado ayudan a distinguir cambios de precio de cambios en ventas. Los días sin registro se excluyen del promedio y no se asumen como cero ventas.
+
+Las recomendaciones son reglas explicables, no pronósticos: reservas para reducir sobrantes, revisión de menús con contribución negativa y pruebas de preventa con menús que ya cuentan con registros suficientes. La comparación por menú usa contribución antes de gastos generales. La fecha de una jornada puede cargarse retrospectivamente; el costo corresponde a los precios actuales al momento de cargarla y el consumo descuenta del stock actual.
