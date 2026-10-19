@@ -187,6 +187,19 @@ footer button { font-size: 10px; padding: 0; }
 .ingredient-row .remove-item { align-self: end; min-height: 44px; }
 .ingredient-cost { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; color: #626a70; padding: 8px 12px; background: #fff4e3; border-radius: 8px; }
 #purchase-qty { display: grid; gap: 12px; }
+.stock-actions { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+.stock-actions button { min-height: 44px; text-align: left; white-space: normal; }
+.stock-actions .primary { padding: 10px 14px; }
+.package-counter { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff7e9; }
+.check-label { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.check-label input { width: 20px; min-height: 20px; height: 20px; accent-color: var(--ink); }
+.package-fields { margin-top: 12px; }
+.package-help { align-self: end; margin: 0; font-size: 12px; }
+input[readonly] { background: #f3eee4; color: #596268; }
+.purchase-preview { padding: 16px; border-radius: 10px; background: #fff0d8; font-size: 13px; line-height: 1.8; }
+.purchase-preview:empty { display: none; }
+#purchase-history > label { margin-bottom: 18px; }
+#purchase-history .row > b { white-space: nowrap; }
 @media (max-width: 600px) {
  .ingredient-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 10px; }
  .ingredient-row label:first-child { grid-column: 1 / 3; }

@@ -30,3 +30,10 @@ test('tres decimales muestran 0,360 kg sin cambiar su valor ni ocultar gramos',(
  assert.equal(formatQuantity(360,'g'),'360');
  assert.equal(inputQuantity(3.921428571,'kg'),'3,921428571');
 });
+
+test('cantidades calculadas grandes o pequeñas se pueden volver a ingresar sin notación científica',()=>{
+ for(const [quantity,unit] of [[1e21,'kg'],[1e-9,'g'],[.3333333333333333,'kg']]){
+  const input=inputQuantity(quantity,unit);
+  assert.ok(!/[eE]/.test(input));assert.equal(Number(input.replace(',','.')),quantity);
+ }
+});

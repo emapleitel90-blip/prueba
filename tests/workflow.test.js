@@ -4,14 +4,15 @@ import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import {report,advice} from '../src/analytics.js';
 import * as measurements from '../src/units.js';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import * as purchasing from '../src/purchasing.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write,payload}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.report=report;w.advice=advice;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.report=report;w.advice=advice;w.purchasing=purchasing;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
  w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -179,4 +180,54 @@ test('litros y mililitros también convierten los precios y el consumo',()=>{
  a.set('#recipe','name','Aceite para menú');a.set('#recipe','yield','1');a.set('#recipe','amount','100');a.submit('#recipe');
  a.nav('Hoy');a.set('#day','made','1');a.set('#day','sold','0');a.submit('#day');
  assert.equal(a.state().stock[0].qty,1.9);assert.equal(a.state().days[0].cost,500);
+});
+
+function check(a,form,name,checked=true){const el=a.doc.querySelector(form).elements[name];el.checked=checked;el.dispatchEvent(new a.w.Event('change',{bubbles:true}))}
+test('conteo de 15 paquetes y reposición de 5 con oferta suman 20 sin duplicar el producto',()=>{
+ const payload=flourPayload();payload.stock[0].qty=0;payload.stock[0].cost=980;
+ payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'}]}];
+ payload.days=[{recipe:'r',name:'Masa',date:'2026-10-01',made:1,sold:1,cost:294,price:2000,consumed:[{id:'flour',qty:.3,unit:'kg'}]}];
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();
+ check(a,'#stock','packaged');a.set('#stock','packageCount','15');a.set('#stock','packageSize','1');a.submit('#stock');
+ assert.equal(a.state().stock[0].qty,15);assert.equal(a.state().expenses.length,0);
+ a.doc.querySelector('[data-restock=flour]').click();assert.equal(a.doc.querySelector('#purchase [name=ingredient]').value,'flour');
+ check(a,'#purchase','packaged');a.set('#purchase','packageCount','5');a.set('#purchase','packageSize','1');a.set('#purchase','priceMode','unit');a.set('#purchase','unitPrice','650');a.set('#purchase','date','2026-10-19');a.set('#purchase','detail','Oferta del mayorista');
+ assert.equal(a.doc.querySelector('#purchase [name=total]').value,'3250');assert.ok(a.doc.querySelector('#purchase-estimate').textContent.includes('20,000 kg'));
+ a.submit('#purchase');const s=a.state();assert.equal(s.stock.length,1);assert.equal(s.stock[0].qty,20);assert.equal(s.stock[0].cost,650);
+ assert.equal(s.expenses[0].total,3250);assert.equal(s.expenses[0].date,'2026-10-19');assert.deepEqual(s.expenses[0].packages,{count:5,size:1,unit:'kg'});assert.ok(s.expenses[0].createdAt);
+ assert.equal(s.days[0].cost,294);assert.ok(a.doc.querySelector('#purchase-history').textContent.includes('650,00'));
+ a.nav('Hoy');a.set('#day','made','1');a.set('#day','sold','0');a.submit('#day');assert.equal(a.state().days[1].cost,195);
+ assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+});
+test('paquetes de 500 g convierten a kg y la edición reemplaza solo la diferencia',()=>{
+ const a=app({payload:flourPayload()});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();
+ check(a,'#stock','packaged');a.set('#stock','packageCount','15');a.set('#stock','packageSize','500');a.set('#stock','packageUnit','g');a.submit('#stock');assert.equal(a.state().stock[0].qty,7.5);
+ a.doc.querySelector('[data-restock=flour]').click();check(a,'#purchase','packaged');a.set('#purchase','packageCount','5');a.set('#purchase','packageSize','500');a.set('#purchase','packageUnit','g');a.set('#purchase','priceMode','unit');a.set('#purchase','unitPrice','650,50');a.submit('#purchase');
+ assert.equal(a.state().stock[0].qty,10);assert.equal(a.state().stock[0].cost,1301);assert.equal(a.state().expenses[0].total,3252.5);
+ a.doc.querySelector('[data-purchase]').click();assert.equal(a.doc.querySelector('#purchase [name=packaged]').checked,true);assert.equal(a.doc.querySelector('#purchase [name=packageUnit]').value,'g');assert.equal(a.doc.querySelector('#purchase [name=packageSize]').value,'500');
+ a.set('#purchase','packageCount','6');a.set('#purchase','total','3600');a.submit('#purchase');assert.equal(a.state().stock[0].qty,10.5);assert.equal(a.state().stock[0].cost,1200);assert.equal(a.state().expenses.length,1);
+ a.doc.querySelector('[data-delete-purchase]').click();assert.equal(a.state().stock[0].qty,7.5);
+});
+test('precios por unidad, historial por producto y cantidades sin un tope fijo',()=>{
+ const payload=flourPayload();payload.stock.push({id:'mayo',name:'Mayonesa',unit:'unidad',qty:100000,cost:1200,min:1});
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-restock=mayo]').click();a.set('#purchase','qty','5000');a.set('#purchase','priceMode','unit');a.set('#purchase','unitPrice','1000');a.submit('#purchase');
+ assert.equal(a.state().stock[1].qty,105000);assert.equal(a.state().stock[1].cost,1000);assert.equal(a.state().expenses[0].total,5000000);
+ a.set('#purchase','ingredient','flour');a.set('#purchase','qty','1');a.set('#purchase','total','2500');a.submit('#purchase');
+ a.nav('Stock');a.doc.querySelector('[data-view-purchases=mayo]').click();assert.equal(a.doc.querySelector('#purchase-filter').value,'mayo');
+ assert.equal(a.doc.querySelector('[data-movement-product=mayo]').hidden,false);assert.equal(a.doc.querySelector('[data-movement-product=flour]').hidden,true);
+ const filter=a.doc.querySelector('#purchase-filter');filter.value='';filter.dispatchEvent(new a.w.Event('change'));assert.equal(a.doc.querySelector('[data-movement-product=flour]').hidden,false);
+});
+test('reposición compartida guarda cantidad, precio y fecha usando la versión remota',async()=>{
+ const payload=flourPayload(),a=app({shared:true,payload});await tick();a.nav('Stock');a.doc.querySelector('[data-restock=flour]').click();a.set('#purchase','qty','2');a.set('#purchase','priceMode','unit');a.set('#purchase','unitPrice','1800');a.set('#purchase','date','2026-10-18');a.submit('#purchase');await tick();
+ assert.equal(a.remote().version,4);assert.equal(a.remote().payload.stock[0].qty,5);assert.equal(a.remote().payload.stock[0].cost,1800);assert.equal(a.remote().payload.expenses[0].date,'2026-10-18');
+});
+test('paquetes inválidos no se guardan y otro gasto no exige datos de paquetes',()=>{
+ const a=app({payload:flourPayload()});a.nav('Compras');a.set('#purchase','ingredient','flour');check(a,'#purchase','packaged');a.set('#purchase','packageSize','0');a.set('#purchase','total','1000');a.submit('#purchase');assert.equal(a.alerts.length,1);assert.equal(a.state().expenses.length,0);
+ a.set('#purchase','kind','other');a.set('#purchase','total','1000');a.submit('#purchase');assert.equal(a.state().expenses.length,1);assert.equal(a.state().stock[0].qty,3);assert.equal(a.state().expenses[0].packages,undefined);
+});
+test('un conflicto de reposición conserva el borrador y bloquea sumar otra compra',async()=>{
+ const payload=flourPayload(),a=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();a.nav('Stock');a.doc.querySelector('[data-restock=flour]').click();a.set('#purchase','qty','5');a.set('#purchase','total','3250');a.submit('#purchase');await tick();
+ assert.equal(a.remote().payload.stock[0].qty,3);assert.equal(JSON.parse(a.w.localStorage.getItem('filo-unsent')).stock[0].qty,8);
+ assert.equal(a.doc.querySelector('#purchase button').disabled,true);a.nav('Stock');assert.equal(a.doc.querySelector('[data-restock=flour]').disabled,true);
+ a.doc.querySelector('#refresh-cloud').click();await tick();assert.equal(a.state().stock[0].qty,3);
 });

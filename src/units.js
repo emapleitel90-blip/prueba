@@ -12,7 +12,7 @@ export function convertQuantity(quantity,from,to){
  return result;
 }
 export const formatQuantity=(quantity,unit)=>quantity.toLocaleString('es-AR',{minimumFractionDigits:['kg','litro'].includes(unit)?3:0,maximumFractionDigits:6});
-export const inputQuantity=(quantity,unit)=>(['kg','litro'].includes(unit)&&Number(quantity.toFixed(3))===quantity?quantity.toFixed(3):String(quantity)).replace('.',',');
+export const inputQuantity=(quantity,unit)=>(['kg','litro'].includes(unit)&&Math.abs(quantity)<1e21&&Number(quantity.toFixed(3))===quantity?quantity.toFixed(3):quantity.toLocaleString('en-US',{useGrouping:false,maximumSignificantDigits:21})).replace('.',',');
 export function recipeQuantity(item,stock){return convertQuantity(item.qty,item.unit||stock.unit,stock.unit)}
 export function changeStockUnit(state,id,to){
  const old=state.stock.find(s=>s.id===id);if(!old)throw Error('El ingrediente no existe.');
