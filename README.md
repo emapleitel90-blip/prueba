@@ -29,6 +29,20 @@ npm run build
 - Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
+## Consumo familiar
+
+La sección Familia usa el mismo stock que el emprendimiento y parte de cuatro personas/porciones, editable en cada registro. No descuenta una comida automáticamente ni supone que siempre comieron los cuatro.
+
+- Ingredientes sueltos: se carga la cantidad total usada entre todos, con g/kg, ml/litro o unidad. Se descuenta una sola vez, sin multiplicar por las personas.
+- Receta para casa: escala sus ingredientes al número de porciones. Conserva el rendimiento y los ingredientes usados como una copia del momento del consumo, para que editar la receta después no modifique el historial.
+- Viandas ya preparadas: se vinculan a una jornada existente y se asignan solo las porciones que quedan después de ventas y consumos familiares. No vuelven a descontar ingredientes. La primera asignación agrega un identificador estable a jornadas antiguas que no lo tenían.
+- Cada consumo guarda fecha, detalle, cantidades y costo histórico. Corregirlo aplica diferencias sobre el stock actual; anular una carga errónea restituye los ingredientes o las porciones correspondientes. Se impiden cantidades insuficientes, fechas futuras y consumos anteriores a la preparación.
+- Las ventas posteriores no pueden usar porciones asignadas a casa. Una jornada con consumos familiares vinculados no se puede eliminar hasta corregir o anular esas asignaciones.
+
+Resumen distingue consumo familiar, ventas y porciones disponibles. El costo de viandas destinadas a casa se separa de la producción para el negocio en la fecha de la jornada original; el historial familiar informa el consumo en su fecha efectiva. Los ingredientes usados directamente en casa no generan producción comercial. Las compras siguen reflejando todo lo pagado por el stock compartido: el consumo familiar no agrega otro pago. No es una valoración por lotes ni una contabilidad fiscal.
+
+Las copias y datos compartidos anteriores, sin historial familiar, siguen siendo válidos. Los registros nuevos se guardan en el mismo documento familiar y usan el control de versión existente. Todos los dispositivos deben recargar la app para utilizar estas reglas. Las fechas operativas se calculan en horario de Córdoba.
+
 ## Compartir entre celulares
 
 Sin variables de Supabase, funciona localmente por navegador. Para almacenamiento familiar con acceso por correo, configurar `.env.example` en desarrollo o las variables de Vercel, y seguir [supabase/README.md](supabase/README.md). Nunca usar claves secretas en variables VITE_.

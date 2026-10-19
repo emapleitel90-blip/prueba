@@ -200,6 +200,17 @@ input[readonly] { background: #f3eee4; color: #596268; }
 .purchase-preview:empty { display: none; }
 #purchase-history > label { margin-bottom: 18px; }
 #purchase-history .row > b { white-space: nowrap; }
+.family-record > b { white-space: nowrap; }
+#family-mode-help { margin: 0; }
+#family-ingredients > p { font-size: 12px; }
+#family-estimate { margin: 0; }
+@media (max-width: 600px) {
+ nav { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+ .nav { padding: 6px 3px; min-width: 0; font-size: 10px; }
+ .section-title { flex-wrap: wrap; }
+ .family-record { flex-wrap: wrap; gap: 10px; }
+ .family-record > div { min-width: 0; }
+}
 @media (max-width: 600px) {
  .ingredient-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 10px; }
  .ingredient-row label:first-child { grid-column: 1 / 3; }

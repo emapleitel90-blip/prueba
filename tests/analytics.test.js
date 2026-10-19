@@ -23,3 +23,12 @@ test('distingue ausencia de registros, crecimiento por día y muestras insuficie
 test('compara menús por contribución por vendida con muestra mínima y gastos por categoría',()=>{
  const days=[day('2026-10-01'),day('2026-10-02'),day('2026-10-03',{recipe:'b',name:'Canelones',cost:1000}),day('2026-10-04',{recipe:'b',name:'Canelones',cost:1000})];const r=report({days,expenses:[expense('2026-10-10','stock',100,'Verduras'),expense('2026-10-11','stock',250,'Verduras')]},'2026-10','2026-10-17');assert.equal(r.menus[0].name,'Canelones');assert.ok(advice(r).some(a=>a.title==='Probar una preventa de Canelones'));assert.equal(r.categories[0][1],350);
 });
+test('separa casa del negocio y no agrega ventas, pérdidas ni pagos ficticios',()=>{
+ const state={days:[day('2026-10-10',{id:'d',made:10,sold:6})],expenses:[expense('2026-10-10','stock',100000)],family:[{kind:'prepared',day:'d',date:'2026-10-10',portions:4,total:8000},{kind:'ingredients',date:'2026-10-11',portions:4,total:500}]};
+ const r=report(state,'2026-10','2026-10-19');assert.equal(r.sales,36000);assert.equal(r.production,12000);assert.equal(r.profit,24000);assert.equal(r.cash,-64000);assert.equal(r.outflow,100000);assert.equal(r.familyCost,8500);assert.equal(r.atHome,4);assert.equal(r.left,0);assert.equal(r.sellThrough,1);assert.equal(r.menus[0].family,4);assert.equal(r.menus[0].contribution,24000);
+});
+test('consumo familiar se informa por su fecha y las viandas se asignan al costo de la jornada original',()=>{
+ const state={days:[day('2026-09-30',{id:'d',made:10,sold:6})],expenses:[],family:[{kind:'prepared',day:'d',date:'2026-10-01',portions:4,total:8000}]};
+ const september=report(state,'2026-09','2026-10-19'),october=report(state,'2026-10','2026-10-19');
+ assert.equal(september.familyCost,0);assert.equal(september.production,12000);assert.equal(september.left,0);assert.equal(october.familyCost,8000);assert.equal(october.production,0);assert.equal(october.profit,0);
+});

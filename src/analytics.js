@@ -1,3 +1,4 @@
+import {familyPortions} from './family.js';
 // Los importes de ventas se consideran cobrados: aún no se registran deudas.
 export function previousMonth(month){const [y,m]=month.split('-').map(Number);return `${m===1?y-1:y}-${String(m===1?12:m-1).padStart(2,'0')}`;}
 function endOfMonth(month){const [y,m]=month.split('-').map(Number);return new Date(y,m,0).getDate();}
@@ -8,10 +9,12 @@ export function report(state,month,now){
   const until=`${period}-${String(limit).padStart(2,'0')}`;
   const days=state.days.filter(d=>d.date.startsWith(period)&&d.date<=until&&d.date<=now);
   const expenses=state.expenses.filter(e=>e.date.startsWith(period)&&e.date<=until&&e.date<=now);
-  const sales=days.reduce((s,d)=>s+d.sold*d.price,0),production=days.reduce((s,d)=>s+d.made*d.cost,0),outflow=expenses.reduce((s,e)=>s+e.total,0),other=expenses.filter(e=>e.kind==='other').reduce((s,e)=>s+e.total,0),made=days.reduce((s,d)=>s+d.made,0),sold=days.reduce((s,d)=>s+d.sold,0);
-  const menus=new Map();for(const d of days){const m=menus.get(d.recipe)||{id:d.recipe,name:d.name,made:0,sold:0,sales:0,cost:0,dates:new Set()};m.made+=d.made;m.sold+=d.sold;m.sales+=d.sold*d.price;m.cost+=d.made*d.cost;m.dates.add(d.date);menus.set(d.recipe,m)}
+  const family=(state.family||[]).filter(e=>e.date.startsWith(period)&&e.date<=until&&e.date<=now);
+  const homePortions=d=>familyPortions({...state,family:(state.family||[]).filter(e=>e.date<=now)},d);
+  const sales=days.reduce((s,d)=>s+d.sold*d.price,0),production=days.reduce((s,d)=>s+(d.made-homePortions(d))*d.cost,0),outflow=expenses.reduce((s,e)=>s+e.total,0),other=expenses.filter(e=>e.kind==='other').reduce((s,e)=>s+e.total,0),made=days.reduce((s,d)=>s+d.made,0),sold=days.reduce((s,d)=>s+d.sold,0),atHome=days.reduce((s,d)=>s+homePortions(d),0),familyCost=family.reduce((sum,e)=>sum+e.total,0);
+  const menus=new Map();for(const d of days){const m=menus.get(d.recipe)||{id:d.recipe,name:d.name,made:0,sold:0,family:0,sales:0,cost:0,dates:new Set()},home=homePortions(d);m.made+=d.made;m.sold+=d.sold;m.family+=home;m.sales+=d.sold*d.price;m.cost+=(d.made-home)*d.cost;m.dates.add(d.date);menus.set(d.recipe,m)}
   const categories=new Map();for(const e of expenses){const category=e.category||(e.kind==='stock'?'Ingredientes e insumos':'Otros gastos');categories.set(category,(categories.get(category)||0)+e.total)}
-  return {days,expenses,sales,production,outflow,other,made,sold,left:made-sold,profit:sales-production-other,cash:sales-outflow,dates:new Set(days.map(d=>d.date)).size,sellThrough:made?sold/made:null,margin:sales?(sales-production-other)/sales:null,menus:[...menus.values()].map(m=>({...m,dates:m.dates.size,contribution:m.sales-m.cost,perSold:m.sold?(m.sales-m.cost)/m.sold:null})).sort((a,b)=>b.contribution-a.contribution),categories:[...categories].sort((a,b)=>b[1]-a[1])};
+  return {days,expenses,family,familyCost,atHome,sales,production,outflow,other,made,sold,left:made-sold-atHome,profit:sales-production-other,cash:sales-outflow,dates:new Set(days.map(d=>d.date)).size,sellThrough:made-atHome?sold/(made-atHome):null,margin:sales?(sales-production-other)/sales:null,menus:[...menus.values()].map(m=>({...m,dates:m.dates.size,contribution:m.sales-m.cost,perSold:m.sold?(m.sales-m.cost)/m.sold:null})).sort((a,b)=>b.contribution-a.contribution),categories:[...categories].sort((a,b)=>b[1]-a[1])};
  };
  const currentData=total(month,last),previous=total(prev,priorLast);let cursor=month;const trend=[];for(let i=0;i<6;i++){const t=total(cursor,cursor===now.slice(0,7)?Number(now.slice(8,10)):endOfMonth(cursor));trend.unshift({month:cursor,sales:t.sales,sold:t.sold,dates:t.dates,profit:t.profit});cursor=previousMonth(cursor)}
  return {...currentData,previous,trend,month,current,comparisonLabel:current?`Del 1 al ${last}; mes anterior del 1 al ${priorLast}`:'Mes completo contra mes completo'};

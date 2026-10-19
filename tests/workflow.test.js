@@ -5,14 +5,15 @@ import {JSDOM} from 'jsdom';
 import {report,advice} from '../src/analytics.js';
 import * as measurements from '../src/units.js';
 import * as purchasing from '../src/purchasing.js';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import * as household from '../src/family.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write,payload}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.report=report;w.advice=advice;w.purchasing=purchasing;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
  w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -96,7 +97,7 @@ test('el resumen actualiza la jornada histórica correcta aunque cambie el orden
  assert.deepEqual(a.state().stock,stock);assert.equal(a.state().days.length,2);
 });
 
-const salesPayload=()=>({demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[{id:'meal',name:'Menú',yield:10,price:6500,items:[{id:'beef',qty:1}]}],days:[{date:new Date().toLocaleDateString('en-CA'),recipe:'meal',name:'Menú',made:10,sold:3,cost:900,price:6500}],expenses:[]});
+const salesPayload=()=>({demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[{id:'meal',name:'Menú',yield:10,price:6500,items:[{id:'beef',qty:1}]}],days:[{date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Argentina/Cordoba'}),recipe:'meal',name:'Menú',made:10,sold:3,cost:900,price:6500}],expenses:[]});
 
 test('las ventas compartidas guardan con la versión cargada y conservan el stock',async()=>{
  const payload=salesPayload(),a=app({shared:true,payload});await tick();
@@ -138,7 +139,7 @@ test('compras en gramos convierten cantidad y precio, también al editar y elimi
  a.doc.querySelector('[data-delete-purchase]').click();assert.ok(Math.abs(a.state().stock[0].qty-3)<1e-9);
 });
 test('cambiar stock de kg a g convierte mínimos y precio sin alterar recetas o compras antiguas',()=>{
- const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:.3}]}];payload.expenses=[{id:'p',ingredient:'flour',kind:'stock',qty:1,total:2500,date:'2026-10-01',detail:''}];payload.days=[{recipe:'r',name:'Masa',date:new Date().toLocaleDateString('en-CA'),made:1,sold:0,cost:750,price:2000,consumed:[{id:'flour',qty:.3}]}];
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:.3}]}];payload.expenses=[{id:'p',ingredient:'flour',kind:'stock',qty:1,total:2500,date:'2026-10-01',detail:''}];payload.days=[{recipe:'r',name:'Masa',date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Argentina/Cordoba'}),made:1,sold:0,cost:750,price:2000,consumed:[{id:'flour',qty:.3}]}];
  const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();a.set('#stock','unit','g');
  assert.equal(a.doc.querySelector('#stock [name=qty]').value,'3000');assert.equal(a.doc.querySelector('#stock [name=costUnit]').value,'kg');
  a.submit('#stock');const s=a.state();assert.equal(s.stock[0].unit,'g');assert.equal(s.stock[0].qty,3000);assert.equal(s.stock[0].cost,2.5);assert.equal(s.stock[0].min,500);
@@ -230,4 +231,32 @@ test('un conflicto de reposición conserva el borrador y bloquea sumar otra comp
  assert.equal(a.remote().payload.stock[0].qty,3);assert.equal(JSON.parse(a.w.localStorage.getItem('filo-unsent')).stock[0].qty,8);
  assert.equal(a.doc.querySelector('#purchase button').disabled,true);a.nav('Stock');assert.equal(a.doc.querySelector('[data-restock=flour]').disabled,true);
  a.doc.querySelector('#refresh-cloud').click();await tick();assert.equal(a.state().stock[0].qty,3);
+});
+
+test('Familia registra 300 g para cuatro, permite corregir y anular sin tocar ventas o pagos',async()=>{
+ const a=app({payload:flourPayload()});a.nav('Familia');assert.equal(a.doc.querySelector('#family [name=portions]').value,'4');
+ a.set('#family','amount','300');a.set('#family','detail','Cena en casa');assert.ok(a.doc.querySelector('#family-estimate').textContent.includes('750,00'));
+ a.submit('#family');await tick();assert.equal(a.state().stock[0].qty,2.7);assert.equal(a.state().family[0].total,750);assert.equal(a.state().days.length,0);assert.equal(a.state().expenses.length,0);
+ a.doc.querySelector('[data-family-edit]').click();a.set('#family','amount','500');a.submit('#family');await tick();assert.equal(a.state().stock[0].qty,2.5);assert.equal(a.state().family.length,1);
+ assert.doesNotThrow(()=>a.w.validateBackup(a.state()));a.doc.querySelector('[data-family-delete]').click();await tick();assert.equal(a.state().stock[0].qty,3);assert.equal(a.state().family.length,0);
+});
+test('Familia prepara receta para cuatro sin crear una jornada comercial',async()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:10,price:2000,items:[{id:'flour',qty:1,unit:'kg'}]}];
+ const a=app({payload});a.nav('Familia');a.set('#family','kind','recipe');a.submit('#family');await tick();
+ assert.equal(a.state().stock[0].qty,2.6);assert.equal(a.state().family[0].total,1000);assert.equal(a.state().days.length,0);
+ a.nav('Resumen');assert.ok(a.doc.body.textContent.includes('Consumo familiar del mes'));assert.ok(!a.doc.body.textContent.includes('NaN'));
+});
+test('viandas para casa protegen disponibilidad, ventas y eliminación de la jornada',async()=>{
+ const a=app();a.set('#day','made','10');a.set('#day','sold','5');a.submit('#day');const original=a.state();
+ a.nav('Familia');a.set('#family','kind','prepared');a.submit('#family');await tick();assert.deepEqual(a.state().stock,original.stock);assert.equal(a.state().family[0].portions,4);
+ a.nav('Hoy');assert.ok(a.doc.body.textContent.includes('4 para casa'));assert.ok(a.doc.body.textContent.includes('1 disponibles'));
+ a.doc.querySelector('[data-edit-sales]').click();a.set('[data-sales-form]','sold','7');a.submit('[data-sales-form]');await tick();assert.equal(a.state().days[0].sold,5);assert.ok(a.alerts.at(-1).includes('6 viandas'));
+ a.doc.querySelector('[data-cancel-sales]').click();a.doc.querySelector('[data-delete-day]').click();assert.equal(a.state().days.length,1);assert.ok(a.alerts.at(-1).includes('Familia'));
+ a.nav('Familia');a.doc.querySelector('[data-family-delete]').click();await tick();a.nav('Hoy');a.doc.querySelector('[data-delete-day]').click();await tick();assert.equal(a.state().days.length,0);assert.deepEqual(a.state().stock.map(i=>i.qty),[8,80,3,45]);
+});
+test('consumo familiar compartido usa versión remota y un conflicto conserva el borrador',async()=>{
+ const payload=flourPayload(),a=app({shared:true,payload});await tick();a.nav('Familia');a.set('#family','amount','300');a.submit('#family');await tick();assert.equal(a.remote().version,4);assert.equal(a.remote().payload.stock[0].qty,2.7);assert.equal(a.remote().payload.family.length,1);
+ const b=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();b.nav('Familia');b.set('#family','amount','500');b.submit('#family');await tick();
+ assert.equal(b.remote().payload.stock[0].qty,3);assert.equal(JSON.parse(b.w.localStorage.getItem('filo-unsent')).family[0].total,1250);assert.equal(b.doc.querySelector('#family button').disabled,true);assert.equal(b.doc.querySelector('[data-family-edit]').disabled,true);
+ b.doc.querySelector('#refresh-cloud').click();await tick();assert.equal(b.state().stock[0].qty,3);assert.equal(b.state().family,undefined);
 });
