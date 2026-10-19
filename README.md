@@ -21,7 +21,7 @@ npm run build
 - Edición y eliminación de compras nuevas, ajustando diferencias sobre el stock actual. Se rechazan correcciones que dejarían stock negativo. El costo se actualiza al precio de la compra guardada/editada; eliminar una compra conserva el costo unitario actual, editable en Stock.
 - Los movimientos anteriores a esta actualización conservan sus importes pero no son editables porque no guardaban el vínculo al ingrediente.
 - Recetas editables, precio por vianda y costo de ingredientes/insumos.
-- Producción con descuento proporcional de stock y costos históricos. Las ventas se registran junto con la producción; aún no hay edición posterior de jornadas.
+- Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
 ## Compartir entre celulares

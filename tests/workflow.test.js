@@ -4,10 +4,10 @@ import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import {report,advice} from '../src/analytics.js';
 const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
-function app({shared=false,write}={}){
+function app({shared=false,write,payload}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
  w.report=report;w.advice=advice;w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
- let remote={payload:{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
+ let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
  w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
  w.eval(`const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
@@ -51,4 +51,65 @@ test('backup inválido no reemplaza datos; backup válido es aceptado',()=>{
 
 test('resumen mensual permite elegir mes, muestra datos vacíos y jornadas con fecha anterior',()=>{
  const a=app();a.nav('Hoy');a.set('#day','date','2025-01-12');a.set('#day','made','1');a.set('#day','sold','1');a.submit('#day');assert.equal(a.state().days[0].date,'2025-01-12');a.nav('Resumen');const picker=a.doc.querySelector('#report-month');picker.value='2025-01';picker.dispatchEvent(new a.w.Event('change'));assert.ok(a.doc.body.textContent.includes('Canelones de carne'));assert.ok(a.doc.body.textContent.includes('2025-01-12'));assert.ok(a.doc.body.textContent.includes('Contribución total'));assert.ok(!a.doc.body.textContent.includes('NaN'));
+});
+
+test('actualizar ventas conserva producción, stock y precios históricos sin duplicar jornadas',async()=>{
+ const a=app();a.set('#day','made','20');a.set('#day','sold','5');a.submit('#day');
+ const before=a.state();
+ a.doc.querySelector('[data-edit-sales="0"]').click();
+ a.set('[data-sales-form]','sold','8');a.submit('[data-sales-form]');await tick();
+ const after=a.state();
+ assert.equal(after.days.length,1);assert.equal(after.days[0].sold,8);
+ assert.deepEqual(after.stock,before.stock);
+ assert.deepEqual({...after.days[0],sold:before.days[0].sold},before.days[0]);
+ const r=report(after,after.days[0].date.slice(0,7),after.days[0].date);
+ assert.equal(r.sales,8*before.days[0].price);assert.equal(r.left,12);
+ assert.equal(r.production,20*before.days[0].cost);
+ assert.ok(a.doc.body.textContent.includes('Ventas actualizadas. El stock no cambió.'));
+});
+
+test('las ventas rechazan excesos y valores inválidos, permiten corregir a cero y cancelar',async()=>{
+ const a=app();a.set('#day','made','10');a.set('#day','sold','5');a.submit('#day');
+ a.doc.querySelector('[data-edit-sales="0"]').click();
+ for(const value of ['11','-1','2,5','']){
+  a.set('[data-sales-form]','sold',value);a.submit('[data-sales-form]');
+  assert.equal(a.state().days[0].sold,5);
+ }
+ assert.equal(a.alerts.length,4);
+ a.set('[data-sales-form]','sold','0');a.submit('[data-sales-form]');await tick();
+ assert.equal(a.state().days[0].sold,0);
+ a.doc.querySelector('[data-edit-sales="0"]').click();a.set('[data-sales-form]','sold','7');
+ a.doc.querySelector('[data-cancel-sales]').click();
+ assert.equal(a.state().days[0].sold,0);assert.equal(a.doc.querySelector('[data-sales-form]'),null);
+});
+
+test('el resumen actualiza la jornada histórica correcta aunque cambie el orden y no haya identificadores',async()=>{
+ const a=app();
+ for(const date of ['2025-01-12','2025-01-13']){a.set('#day','date',date);a.set('#day','made','5');a.set('#day','sold','1');a.submit('#day')}
+ const stock=a.state().stock;
+ a.nav('Resumen');const picker=a.doc.querySelector('#report-month');picker.value='2025-01';picker.dispatchEvent(new a.w.Event('change'));
+ assert.equal(a.doc.querySelector('[data-edit-sales]').dataset.editSales,'1');
+ a.doc.querySelector('[data-edit-sales="1"]').click();a.set('[data-sales-form]','sold','4');a.submit('[data-sales-form]');await tick();
+ assert.deepEqual(a.state().days.map(d=>d.sold),[1,4]);
+ assert.deepEqual(a.state().stock,stock);assert.equal(a.state().days.length,2);
+});
+
+const salesPayload=()=>({demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[{id:'meal',name:'Menú',yield:10,price:6500,items:[{id:'beef',qty:1}]}],days:[{date:new Date().toLocaleDateString('en-CA'),recipe:'meal',name:'Menú',made:10,sold:3,cost:900,price:6500}],expenses:[]});
+
+test('las ventas compartidas guardan con la versión cargada y conservan el stock',async()=>{
+ const payload=salesPayload(),a=app({shared:true,payload});await tick();
+ a.doc.querySelector('[data-edit-sales="0"]').click();a.set('[data-sales-form]','sold','6');a.submit('[data-sales-form]');await tick();
+ assert.equal(a.remote().version,4);assert.equal(a.remote().payload.days[0].sold,6);
+ assert.deepEqual(a.remote().payload.stock,payload.stock);
+ assert.equal(a.remote().payload.days[0].cost,900);assert.equal(a.remote().payload.days[0].price,6500);
+});
+
+test('un conflicto de ventas conserva el borrador y bloquea otra edición hasta actualizar',async()=>{
+ const a=app({shared:true,payload:salesPayload(),write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();
+ a.doc.querySelector('[data-edit-sales="0"]').click();a.set('[data-sales-form]','sold','6');a.submit('[data-sales-form]');await tick();
+ assert.equal(JSON.parse(a.w.localStorage.getItem('filo-unsent')).days[0].sold,6);
+ assert.equal(a.doc.querySelector('[data-edit-sales="0"]').disabled,true);
+ assert.ok(!a.doc.body.textContent.includes('Ventas actualizadas.'));
+ a.doc.querySelector('#refresh-cloud').click();await tick();
+ assert.equal(a.state().days[0].sold,3);assert.equal(a.doc.querySelector('[data-edit-sales="0"]').disabled,false);
 });

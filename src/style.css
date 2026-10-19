@@ -86,6 +86,15 @@ input:focus, select:focus { outline: 2px solid #bf7661; outline-offset: 1px; }
 .row small { display: block; color: #687178; font-size: 11px; margin-top: 7px; line-height: 1.6; }
 .row > span { color: #626c73; font-size: 12px; }
 .row button { padding: 9px 9px 9px 0; font-size: 12px; }
+.day-record > .row { align-items: flex-start; }
+.day-record > .row > b { white-space: nowrap; }
+.day-record [data-edit-sales] { text-decoration: underline; text-underline-offset: 3px; min-height: 44px; }
+.sales-editor { margin: 8px 0 20px; padding: 18px; border: 1px solid #e6cba4; border-radius: 12px; background: #fff5e6; }
+.sales-editor h3, .sales-editor p { margin: 0; }
+.sales-editor p, .sales-editor > small { font-size: 12px; line-height: 1.6; color: #5d5c58; }
+.sales-editor label { max-width: 300px; }
+.sales-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.sales-editor-actions button { min-height: 44px; }
 .table-wrap { overflow: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
 td, th { padding: 17px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
