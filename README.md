@@ -15,12 +15,14 @@ npm run build
 
 ## Funciones
 
-- Productos editables, con unidades kg, g, litro, ml y unidad. Cantidades y precios aceptan coma o punto decimal, sin separadores de miles. Se debe usar la misma unidad en compras y recetas; 900 gramos se cargan como 0,9 kg o 900 g, según el producto.
+- Productos editables, con unidades kg, g, litro, ml y unidad. Cantidades y precios aceptan coma o punto decimal, sin separadores de miles. Compras y recetas permiten elegir g/kg, ml/litro o unidad por ingrediente. Las cantidades y los precios se convierten a la unidad del stock: 300 g a $2500/kg cuestan $750 y consumen 0,3 kg. No se convierten unidades de peso a volumen sin densidad.
 - Compras que permiten elegir cualquier producto registrado o crearlo en el momento; cantidades y total calculan el precio por unidad. Categorías libres y fecha editable.
 - Otros gastos sin requisito de ingrediente o cantidad.
 - Edición y eliminación de compras nuevas, ajustando diferencias sobre el stock actual. Se rechazan correcciones que dejarían stock negativo. El costo se actualiza al precio de la compra guardada/editada; eliminar una compra conserva el costo unitario actual, editable en Stock.
 - Los movimientos anteriores a esta actualización conservan sus importes pero no son editables porque no guardaban el vínculo al ingrediente.
-- Recetas editables, precio por vianda y costo de ingredientes/insumos.
+- Recetas editables con cantidad y unidad por ingrediente, equivalencia con el stock, costo individual y total de la preparación antes de guardar. La cantidad es para toda la preparación, dividida por su rendimiento.
+- En Stock se puede elegir por separado la unidad de cantidad y la unidad del precio. Cambiar kg a g o litro a ml convierte stock, mínimos y costo por unidad, conservando las unidades de compras y consumos anteriores. Los registros antiguos mantienen su unidad original hasta que se editen explícitamente. Las jornadas ya cargadas conservan su costo histórico.
+- Las cantidades en kg/litro muestran al menos tres decimales (0,360 kg = 360 g). El cero final no cambia el valor. Los costos por unidad admiten decimales para evitar redondear precios por gramo a cero.
 - Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 

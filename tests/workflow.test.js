@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {JSDOM} from 'jsdom';
 import {report,advice} from '../src/analytics.js';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import * as measurements from '../src/units.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write,payload}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.report=report;w.advice=advice;w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.report=report;w.advice=advice;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
  w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -32,7 +33,7 @@ test('rechaza cifras ambiguas y negativos, productos duplicados e enteros fracci
  const a=app();a.nav('Stock');a.set('#stock','name','Nuevo');a.set('#stock','qty','1.200,50');a.submit('#stock');assert.equal(a.alerts.length,1);a.set('#stock','qty','-2');a.submit('#stock');assert.equal(a.alerts.length,2);a.set('#stock','qty','0,9');a.set('#stock','name','Carne picada');a.submit('#stock');assert.equal(a.alerts.length,3);a.nav('Hoy');a.set('#day','made','2,5');a.submit('#day');assert.equal(a.alerts.length,4);
 });
 test('recetas aceptan decimales y producción usa sus costos',()=>{
- const a=app();a.nav('Recetas');a.set('#recipe','name','Porción');a.set('#recipe','yield','1');a.set('#recipe','price','2500,50');a.set('#recipe','amount','0,9');a.submit('#recipe');assert.equal(a.state().recipes.at(-1).items[0].qty,.9);
+ const a=app();a.nav('Recetas');a.set('#recipe','name','Porción');a.set('#recipe','yield','1');a.set('#recipe','price','2500,50');a.set('#recipe','amount','0,9');a.set('#recipe','itemUnit','kg');a.submit('#recipe');assert.equal(a.state().recipes.at(-1).items[0].qty,.9);
  a.nav('Hoy');a.set('#day','recipe',a.state().recipes.at(-1).id);a.set('#day','made','1');a.set('#day','sold','1');a.submit('#day');assert.equal(a.state().stock[0].qty,7.1);assert.equal(a.state().days[0].price,2500.5);
 });
 test('no elimina una compra ya consumida si produciría stock negativo',()=>{
@@ -112,4 +113,70 @@ test('un conflicto de ventas conserva el borrador y bloquea otra edición hasta 
  assert.ok(!a.doc.body.textContent.includes('Ventas actualizadas.'));
  a.doc.querySelector('#refresh-cloud').click();await tick();
  assert.equal(a.state().days[0].sold,3);assert.equal(a.doc.querySelector('[data-edit-sales="0"]').disabled,false);
+});
+
+const flourPayload=()=>({demo:false,stock:[{id:'flour',name:'Harina',unit:'kg',qty:3,cost:2500,min:.5}],recipes:[],days:[],expenses:[]});
+test('300 g en receta con precio por kilo cuestan $750 y consumen solo 0,3 kg',()=>{
+ const a=app({payload:flourPayload()});a.nav('Recetas');
+ assert.equal(a.doc.querySelector('[name=itemUnit]').value,'g');
+ a.set('#recipe','name','Masa');a.set('#recipe','yield','1');a.set('#recipe','amount','300');
+ a.doc.querySelector('[name=amount]').dispatchEvent(new a.w.Event('input',{bubbles:true}));
+ assert.ok(a.doc.querySelector('#recipe-estimate').textContent.includes('750'));
+ a.submit('#recipe');assert.deepEqual(a.state().recipes[0].items[0],{id:'flour',qty:300,unit:'g'});
+ a.nav('Hoy');a.set('#day','made','1');a.set('#day','sold','1');a.submit('#day');
+ assert.equal(a.state().stock[0].qty,2.7);assert.equal(a.state().days[0].cost,750);
+ assert.equal(a.state().days[0].consumed[0].unit,'kg');assert.equal(a.state().days[0].consumed[0].qty,.3);
+ a.doc.querySelector('[data-delete-day]').click();assert.equal(a.state().stock[0].qty,3);
+});
+test('compras en gramos convierten cantidad y precio, también al editar y eliminar',()=>{
+ const a=app({payload:flourPayload()});a.nav('Compras');a.set('#purchase','ingredient','flour');a.set('#purchase','purchaseUnit','g');a.set('#purchase','qty','300');a.set('#purchase','total','750');a.submit('#purchase');
+ assert.equal(a.state().stock[0].qty,3.3);assert.equal(a.state().stock[0].cost,2500);assert.equal(a.state().expenses[0].unit,'g');
+ a.doc.querySelector('[data-purchase]').click();assert.equal(a.doc.querySelector('[name=purchaseUnit]').value,'g');
+ a.set('#purchase','qty','200');a.set('#purchase','total','600');a.submit('#purchase');
+ assert.ok(Math.abs(a.state().stock[0].qty-3.2)<1e-9);assert.equal(a.state().stock[0].cost,3000);
+ a.doc.querySelector('[data-delete-purchase]').click();assert.ok(Math.abs(a.state().stock[0].qty-3)<1e-9);
+});
+test('cambiar stock de kg a g convierte mínimos y precio sin alterar recetas o compras antiguas',()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:.3}]}];payload.expenses=[{id:'p',ingredient:'flour',kind:'stock',qty:1,total:2500,date:'2026-10-01',detail:''}];payload.days=[{recipe:'r',name:'Masa',date:new Date().toLocaleDateString('en-CA'),made:1,sold:0,cost:750,price:2000,consumed:[{id:'flour',qty:.3}]}];
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();a.set('#stock','unit','g');
+ assert.equal(a.doc.querySelector('#stock [name=qty]').value,'3000');assert.equal(a.doc.querySelector('#stock [name=costUnit]').value,'kg');
+ a.submit('#stock');const s=a.state();assert.equal(s.stock[0].unit,'g');assert.equal(s.stock[0].qty,3000);assert.equal(s.stock[0].cost,2.5);assert.equal(s.stock[0].min,500);
+ assert.equal(s.recipes[0].items[0].unit,'kg');assert.equal(s.expenses[0].unit,'kg');assert.equal(s.days[0].cost,750);
+ a.nav('Hoy');a.doc.querySelector('[data-delete-day]').click();assert.equal(a.state().stock[0].qty,3300);
+ a.nav('Compras');a.doc.querySelector('[data-delete-purchase]').click();assert.equal(a.state().stock[0].qty,2300);
+});
+test('un registro antiguo 630 kg se puede corregir explícitamente a 630 g sin tocar jornadas',()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Pan de carne',yield:20,price:9000,items:[{id:'flour',qty:630}]}];
+ const a=app({payload});a.nav('Recetas');a.doc.querySelector('[data-recipe]').click();
+ assert.equal(a.doc.querySelector('[name=itemUnit]').value,'kg');a.set('#recipe','itemUnit','g');a.submit('#recipe');
+ assert.equal(a.state().recipes[0].items[0].qty,630);assert.equal(a.state().recipes[0].items[0].unit,'g');assert.equal(a.state().stock[0].qty,3);
+ a.nav('Hoy');a.set('#day','made','20');a.set('#day','sold','0');a.submit('#day');
+ assert.equal(a.state().days[0].cost,78.75);assert.equal(a.state().stock[0].qty,2.37);
+});
+test('una receta combina gramos y kilos del mismo producto, sumando el consumo una sola vez',()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Mezcla',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'},{id:'flour',qty:.2,unit:'kg'}]}];
+ const a=app({payload});a.set('#day','made','1');a.set('#day','sold','0');a.submit('#day');
+ assert.equal(a.state().days[0].cost,1250);assert.equal(a.state().stock[0].qty,2.5);assert.equal(a.state().days[0].consumed.length,1);
+});
+test('copias nuevas validan dimensiones y las copias anteriores siguen siendo compatibles',()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'}]}];
+ const a=app({payload});assert.doesNotThrow(()=>a.w.validateBackup(payload));
+ payload.recipes[0].items[0].unit='litro';assert.throws(()=>a.w.validateBackup(payload));
+ delete payload.recipes[0].items[0].unit;assert.doesNotThrow(()=>a.w.validateBackup(payload));
+});
+
+test('precio por kg con stock en gramos normaliza el costo y bloquea cambios de dimensión',()=>{
+ const payload=flourPayload();payload.stock[0]={...payload.stock[0],unit:'g',qty:3000,cost:2.5,min:500};
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();
+ a.set('#stock','costUnit','kg');a.set('#stock','cost','2500');a.submit('#stock');
+ assert.equal(a.state().stock[0].cost,2.5);assert.equal(a.state().stock[0].qty,3000);
+ a.doc.querySelector('[data-edit=flour]').click();a.set('#stock','unit','litro');
+ assert.equal(a.doc.querySelector('#stock [name=unit]').value,'g');assert.ok(a.alerts.length);
+});
+test('litros y mililitros también convierten los precios y el consumo',()=>{
+ const payload=flourPayload();payload.stock[0]={id:'flour',name:'Aceite',unit:'litro',qty:2,cost:5000,min:0};
+ const a=app({payload});a.nav('Recetas');assert.equal(a.doc.querySelector('[name=itemUnit]').value,'ml');
+ a.set('#recipe','name','Aceite para menú');a.set('#recipe','yield','1');a.set('#recipe','amount','100');a.submit('#recipe');
+ a.nav('Hoy');a.set('#day','made','1');a.set('#day','sold','0');a.submit('#day');
+ assert.equal(a.state().stock[0].qty,1.9);assert.equal(a.state().days[0].cost,500);
 });
