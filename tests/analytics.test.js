@@ -32,3 +32,8 @@ test('consumo familiar se informa por su fecha y las viandas se asignan al costo
  const september=report(state,'2026-09','2026-10-19'),october=report(state,'2026-10','2026-10-19');
  assert.equal(september.familyCost,0);assert.equal(september.production,12000);assert.equal(september.left,0);assert.equal(october.familyCost,8000);assert.equal(october.production,0);assert.equal(october.profit,0);
 });
+test('el adicional de recetas queda como presupuesto y no duplica un gasto real ya pagado',()=>{
+ const r=report({days:[day('2026-10-23',{made:1,sold:1,price:2000,cost:750,overheadPercent:10,overheadCost:75})],expenses:[expense('2026-10-23','other',75,'Electricidad')]},'2026-10','2026-10-23');
+ assert.equal(r.production,750);assert.equal(r.overheadEstimate,75);assert.equal(r.productionBudget,825);assert.equal(r.other,75);assert.equal(r.profit,1175);assert.equal(r.cash,1925);
+ const family=report({days:[day('2026-10-23',{id:'d',made:5,sold:1,price:2000,cost:750,overheadPercent:10,overheadCost:75})],expenses:[],family:[{id:'f',kind:'prepared',day:'d',date:'2026-10-23',portions:4,total:3000}]},'2026-10','2026-10-23');assert.equal(family.production,750);assert.equal(family.overheadEstimate,75);assert.equal(family.familyCost,3000);
+});

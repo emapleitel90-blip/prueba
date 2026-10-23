@@ -189,6 +189,13 @@ footer button { font-size: 10px; padding: 0; }
 .ingredient-row { grid-template-columns: minmax(130px, 1fr) minmax(85px, .5fr) minmax(105px, .65fr) 34px; align-items: start; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .ingredient-row .remove-item { align-self: end; min-height: 44px; }
 .ingredient-cost { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; color: #626a70; padding: 8px 12px; background: #fff4e3; border-radius: 8px; }
+.recipe-overhead { padding: 14px 16px; background: #fff4e3; border: 1px solid var(--line); border-radius: 10px; }
+.recipe-overhead p { font-size: 12px; margin: 0 0 8px; }
+.recipe-overhead button { min-height: 44px; text-decoration: underline; text-underline-offset: 3px; padding: 6px 0; }
+.cost-breakdown { display: grid; gap: 10px; margin: 0 0 14px; font-size: 13px; }
+.cost-breakdown > div { display: flex; justify-content: space-between; gap: 16px; }
+.cost-breakdown dd { margin: 0; white-space: nowrap; font-weight: 600; }
+.cost-breakdown .cost-total { border-top: 1px solid #d9bf99; padding-top: 12px; font-weight: 700; font-size: 15px; }
 #purchase-qty { display: grid; gap: 12px; }
 .stock-actions { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
 .stock-actions button { min-height: 44px; text-align: left; white-space: normal; }

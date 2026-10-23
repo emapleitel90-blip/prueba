@@ -29,6 +29,16 @@ npm run build
 - Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
+## Porcentaje de gastos adicionales en recetas
+
+En Recetas → Editar receta se puede indicar «Gastos adicionales (%)» o usar el botón «Aplicar 10% de gastos adicionales». El porcentaje se aplica una sola vez sobre el costo de todos los ingredientes y se divide por el rendimiento. Ej.: $2000 de ingredientes por porción + 10% ($200) = $2200 de costo presupuestado por vianda. Admite coma o punto y porcentajes decimales. Cero deja el costo de ingredientes; las recetas anteriores parten de cero hasta que se elija y guarde un porcentaje.
+
+La pantalla muestra ingredientes por porción, adicional, costo total por vianda y total de toda la preparación. El precio de venta sigue siendo un campo independiente. El porcentaje es una estimación global para costos que no se hayan incluido ya como ingredientes, como electricidad, trabajo o insumos menores. No determina cantidades físicas de sal, aceite o envases: si se necesitan controlar en stock, se cargan como ingredientes.
+
+Al registrar una nueva jornada se conservan el costo de ingredientes, el porcentaje y el adicional presupuestado de ese momento. Editar una receta no recalcula jornadas anteriores. Las cantidades consumidas de stock dependen de los ingredientes, no del porcentaje.
+
+Resumen incluye un presupuesto de producción para el negocio, con el adicional separado. Las compras, pagos y resultado del negocio continúan usando ingredientes consumidos y gastos reales registrados, para no descontar a la vez el adicional estimado y el mismo gasto pagado. Familia conserva el costo histórico de los ingredientes y las porciones de casa se excluyen del presupuesto comercial.
+
 ## Consumo familiar
 
 La sección Familia usa el mismo stock que el emprendimiento y parte de cuatro personas/porciones, editable en cada registro. No descuenta una comida automáticamente ni supone que siempre comieron los cuatro.

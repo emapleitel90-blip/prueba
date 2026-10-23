@@ -6,10 +6,11 @@ import {report,advice} from '../src/analytics.js';
 import * as measurements from '../src/units.js';
 import * as purchasing from '../src/purchasing.js';
 import * as household from '../src/family.js';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import {recipeCosts} from '../src/costing.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {recipeCosts} from './costing.js';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write,read,payload,authenticated=true}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.recipeCosts=recipeCosts;w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  let authChange,currentSession=authenticated?{user:{email:'familia@example.com'}}:null,readCount=0;
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:currentSession}}),onAuthStateChange:callback=>{authChange=callback}}}:null;
@@ -296,4 +297,29 @@ test('recuperar la sesión limpia el error antiguo y una lectura pendiente no re
 test('sin sesión muestra el acceso y mantiene los formularios de inventario bloqueados',async()=>{
  const a=app({shared:true,authenticated:false});await tick();a.nav('Stock');assert.equal(a.readCalls(),0);assert.equal(a.doc.querySelector('#stock button').disabled,true);
  a.doc.querySelector('[data-recover-edit]').click();assert.equal(a.doc.activeElement,a.doc.querySelector('#login input'));assert.equal(a.readCalls(),0);
+});
+
+test('el 10% de gastos adicionales se guarda en la receta y en futuras producciones, conservando lo ya registrado',async()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'}]}];payload.days=[{recipe:'r',name:'Masa',date:new Date().toLocaleDateString('en-CA',{timeZone:'America/Argentina/Cordoba'}),made:1,sold:1,cost:750,price:2000}];
+ const a=app({payload});a.nav('Recetas');a.doc.querySelector('[data-recipe=r]').click();assert.equal(a.doc.querySelector('#recipe [name=overheadPercent]').value,'0');
+ a.doc.querySelector('#recipe-overhead-10').click();assert.equal(a.doc.querySelector('#recipe [name=overheadPercent]').value,'10');assert.ok(a.doc.querySelector('#recipe-estimate').textContent.includes('825,00'));a.submit('#recipe');
+ assert.equal(a.state().recipes[0].overheadPercent,10);assert.equal(a.state().recipes[0].price,2000);assert.deepEqual(a.state().stock,payload.stock);assert.deepEqual(a.state().days,payload.days);assert.equal(a.state().expenses.length,0);
+ a.nav('Hoy');a.set('#day','made','1');a.set('#day','sold','1');a.submit('#day');const day=a.state().days[1];assert.equal(day.cost,750);assert.equal(day.overheadCost,75);assert.equal(day.overheadPercent,10);assert.equal(a.state().stock[0].qty,2.7);assert.ok(a.doc.body.textContent.includes('825,00'));
+ a.nav('Recetas');a.doc.querySelector('[data-recipe=r]').click();a.set('#recipe','overheadPercent','20');a.submit('#recipe');assert.equal(a.state().days[1].overheadCost,75);assert.equal(a.state().days[1].overheadPercent,10);
+ a.nav('Resumen');assert.ok(a.doc.body.textContent.includes('Presupuesto de recetas del mes'));assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+});
+test('porcentajes decimales son editables y no se guardan negativos, vacíos o desbordamientos',()=>{
+ const a=app({payload:flourPayload()});a.nav('Recetas');a.set('#recipe','name','Masa');a.set('#recipe','yield','1');a.set('#recipe','amount','300');
+ for(const value of ['-10','','1'+'0'.repeat(308)]){a.set('#recipe','overheadPercent',value);a.submit('#recipe');assert.equal(a.state().recipes.length,0)}
+ a.set('#recipe','overheadPercent','12,5');a.submit('#recipe');assert.equal(a.state().recipes[0].overheadPercent,12.5);a.doc.querySelector('[data-recipe]').click();assert.equal(a.doc.querySelector('#recipe [name=overheadPercent]').value,'12,5');assert.ok(a.doc.querySelector('#recipe-estimate').textContent.includes('843,75'));
+});
+test('el porcentaje usa el guardado compartido y conserva el borrador ante un conflicto',async()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'}]}];
+ const a=app({shared:true,payload});await tick();a.nav('Recetas');a.doc.querySelector('[data-recipe=r]').click();a.doc.querySelector('#recipe-overhead-10').click();a.submit('#recipe');await tick();assert.equal(a.remote().version,4);assert.equal(a.remote().payload.recipes[0].overheadPercent,10);assert.deepEqual(a.remote().payload.stock,payload.stock);
+ const b=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();b.nav('Recetas');b.doc.querySelector('[data-recipe=r]').click();b.doc.querySelector('#recipe-overhead-10').click();b.submit('#recipe');await tick();assert.equal(b.remote().payload.recipes[0].overheadPercent,undefined);assert.equal(JSON.parse(b.w.localStorage.getItem('filo-unsent')).recipes[0].overheadPercent,10);assert.equal(b.doc.querySelector('#recipe button').disabled,true);
+});
+test('las copias anteriores son válidas y las nuevas validan el porcentaje y el desglose histórico',()=>{
+ const payload=flourPayload();payload.recipes=[{id:'r',name:'Masa',yield:1,price:2000,items:[{id:'flour',qty:300,unit:'g'}]}];const a=app({payload});assert.doesNotThrow(()=>a.w.validateBackup(payload));
+ payload.recipes[0].overheadPercent=-10;assert.throws(()=>a.w.validateBackup(payload));payload.recipes[0].overheadPercent='10';assert.throws(()=>a.w.validateBackup(payload));payload.recipes[0].overheadPercent=10;assert.doesNotThrow(()=>a.w.validateBackup(payload));
+ payload.days=[{recipe:'r',name:'Masa',date:'2026-10-23',made:1,sold:1,cost:750,price:2000,overheadPercent:10,overheadCost:75}];assert.doesNotThrow(()=>a.w.validateBackup(payload));payload.days[0].overheadCost=70;assert.throws(()=>a.w.validateBackup(payload));
 });
