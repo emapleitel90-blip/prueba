@@ -7,19 +7,20 @@ import * as measurements from '../src/units.js';
 import * as purchasing from '../src/purchasing.js';
 import * as household from '../src/family.js';
 const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
-function app({shared=false,write,payload}={}){
+function app({shared=false,write,read,payload,authenticated=true}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
  w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
- w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:{user:{email:'familia@example.com'}}}}),onAuthStateChange:()=>{}}}:null;
- w.mockRead=async()=>structuredClone(remote);w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
+ let authChange,currentSession=authenticated?{user:{email:'familia@example.com'}}:null,readCount=0;
+ w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:currentSession}}),onAuthStateChange:callback=>{authChange=callback}}}:null;
+ w.mockRead=async()=>{readCount++;return read?read(structuredClone(remote),readCount):structuredClone(remote)};w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
  w.eval(`const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  const submit=form=>doc.querySelector(form).dispatchEvent(new w.Event('submit',{cancelable:true}));
  const state=()=>JSON.parse(w.localStorage.getItem('filo-v1'));
- return {w,doc,nav,set,submit,state,alerts,remote:()=>remote};
+ return {w,doc,nav,set,submit,state,alerts,remote:()=>remote,replaceRemote:next=>{remote=structuredClone(next)},readCalls:()=>readCount,emitAuth:(event,next=currentSession)=>{currentSession=next;authChange(event,next)}};
 }
 const tick=()=>new Promise(r=>setTimeout(r,20));
 test('compra crea ingrediente, admite coma, calcula costo y edición aplica solo diferencia',()=>{
@@ -229,7 +230,7 @@ test('paquetes inválidos no se guardan y otro gasto no exige datos de paquetes'
 test('un conflicto de reposición conserva el borrador y bloquea sumar otra compra',async()=>{
  const payload=flourPayload(),a=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();a.nav('Stock');a.doc.querySelector('[data-restock=flour]').click();a.set('#purchase','qty','5');a.set('#purchase','total','3250');a.submit('#purchase');await tick();
  assert.equal(a.remote().payload.stock[0].qty,3);assert.equal(JSON.parse(a.w.localStorage.getItem('filo-unsent')).stock[0].qty,8);
- assert.equal(a.doc.querySelector('#purchase button').disabled,true);a.nav('Stock');assert.equal(a.doc.querySelector('[data-restock=flour]').disabled,true);
+ assert.equal(a.doc.querySelector('#purchase button').disabled,true);a.nav('Stock');assert.equal(a.doc.querySelector('[data-restock=flour]').disabled,false);
  a.doc.querySelector('#refresh-cloud').click();await tick();assert.equal(a.state().stock[0].qty,3);
 });
 
@@ -259,4 +260,40 @@ test('consumo familiar compartido usa versión remota y un conflicto conserva el
  const b=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();b.nav('Familia');b.set('#family','amount','500');b.submit('#family');await tick();
  assert.equal(b.remote().payload.stock[0].qty,3);assert.equal(JSON.parse(b.w.localStorage.getItem('filo-unsent')).family[0].total,1250);assert.equal(b.doc.querySelector('#family button').disabled,true);assert.equal(b.doc.querySelector('[data-family-edit]').disabled,true);
  b.doc.querySelector('#refresh-cloud').click();await tick();assert.equal(b.state().stock[0].qty,3);assert.equal(b.state().family,undefined);
+});
+
+test('Ajustar inventario recupera el bloqueo y abre el producto con los últimos valores compartidos',async()=>{
+ const writes=[],a=app({shared:true,write:async(payload,v)=>{writes.push({payload:structuredClone(payload),version:v});if(v===3)throw Error('Otra persona guardó cambios');return v+1}});await tick();
+ a.nav('Stock');a.doc.querySelector('[data-edit=beef]').click();a.set('#stock','qty','1');a.submit('#stock');await tick();
+ assert.equal(a.doc.querySelector('#stock button').disabled,true);assert.equal(a.doc.querySelector('[data-edit=beef]').disabled,false);
+ assert.ok(!a.doc.body.textContent.includes('Inventario y precio guardados.'));
+ const latest=structuredClone(a.remote());latest.version=4;latest.payload.stock[0].qty=5;latest.payload.stock[0].cost=7000;a.replaceRemote(latest);
+ a.doc.querySelector('[data-edit=beef]').click();await tick();
+ assert.equal(a.doc.querySelector('#stock [name=qty]').value,'5,000');assert.equal(a.doc.querySelector('#stock [name=cost]').value,'7000');assert.equal(a.doc.querySelector('#stock button').disabled,false);
+ assert.equal(JSON.parse(a.w.localStorage.getItem('filo-unsent')).stock[0].qty,1);
+ a.set('#stock','qty','6');a.set('#stock','cost','7500');a.submit('#stock');await tick();
+ assert.equal(writes[1].version,4);assert.equal(writes[1].payload.stock[0].qty,6);assert.equal(writes[1].payload.stock[0].cost,7500);assert.equal(a.state().stock[0].qty,6);assert.equal(a.w.localStorage.getItem('filo-unsent'),null);
+});
+test('Sumar compra recupera la sincronización y selecciona el mismo producto',async()=>{
+ const a=app({shared:true,write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();a.nav('Stock');a.doc.querySelector('[data-edit=beef]').click();a.set('#stock','cost','8000');a.submit('#stock');await tick();
+ a.doc.querySelector('[data-restock=beef]').click();await tick();
+ assert.equal(a.doc.querySelector('#purchase [name=ingredient]').value,'beef');assert.equal(a.doc.querySelector('#purchase button').disabled,false);assert.equal(a.remote().payload.stock[0].cost,9000);
+});
+test('un reintento sin conexión conserva el bloqueo y el borrador hasta leer una versión válida',async()=>{
+ const a=app({shared:true,read:async(row,count)=>{if(count===2)throw Error('Sin conexión');return row},write:async()=>{throw Error('Otra persona guardó cambios')}});await tick();a.nav('Stock');a.doc.querySelector('[data-edit=beef]').click();a.set('#stock','qty','1');a.submit('#stock');await tick();
+ a.doc.querySelector('[data-edit=beef]').click();await tick();assert.equal(a.doc.querySelector('#stock button').disabled,true);assert.ok(a.doc.body.textContent.includes('Sin conexión'));assert.ok(a.doc.querySelector('[data-recover-edit]'));assert.equal(a.remote().payload.stock[0].qty,2);
+ a.doc.querySelector('[data-edit=beef]').click();await tick();assert.equal(a.doc.querySelector('#stock button').disabled,false);assert.equal(a.doc.querySelector('#stock [name=qty]').value,'2,000');assert.ok(a.w.localStorage.getItem('filo-unsent'));
+});
+test('el aviso de recuperación permite resolver una lectura inicial fallida',async()=>{
+ const a=app({shared:true,read:async(row,count)=>{if(count===1)throw Error('Falló la conexión');return row}});await tick();a.nav('Stock');assert.equal(a.doc.querySelector('#stock button').disabled,true);
+ a.doc.querySelector('[data-recover-edit]').click();await tick();assert.equal(a.doc.querySelector('#stock button').disabled,false);assert.ok(a.doc.querySelector('[data-edit=beef]'));assert.equal(a.readCalls(),2);
+});
+test('recuperar la sesión limpia el error antiguo y una lectura pendiente no restaura datos tras cerrar sesión',async()=>{
+ const a=app({shared:true,read:async(row,count)=>{if(count===1)throw Error('Sesión pendiente de renovar');return row}});await tick();a.nav('Stock');assert.equal(a.doc.querySelector('#stock button').disabled,true);
+ a.emitAuth('TOKEN_REFRESHED');await tick();assert.equal(a.doc.querySelector('#stock button').disabled,false);assert.equal(a.readCalls(),2);
+ let resolveRead;const b=app({shared:true,read:row=>new Promise(resolve=>{resolveRead=()=>resolve(row)})});await tick();b.emitAuth('SIGNED_OUT',null);resolveRead();await tick();b.nav('Stock');assert.equal(b.doc.querySelector('[data-edit]'),null);assert.equal(b.doc.querySelector('#stock button').disabled,true);assert.ok(b.doc.querySelector('#login'));
+});
+test('sin sesión muestra el acceso y mantiene los formularios de inventario bloqueados',async()=>{
+ const a=app({shared:true,authenticated:false});await tick();a.nav('Stock');assert.equal(a.readCalls(),0);assert.equal(a.doc.querySelector('#stock button').disabled,true);
+ a.doc.querySelector('[data-recover-edit]').click();assert.equal(a.doc.activeElement,a.doc.querySelector('#login input'));assert.equal(a.readCalls(),0);
 });

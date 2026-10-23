@@ -111,6 +111,9 @@ footer button { font-size: 10px; padding: 0; }
 .sharing p { color: #5d5c58; }
 .sharing [role='alert'] { color: #922e25; font-weight: 600; }
 .sync-loading { position: fixed; inset: 0; background: #fffaf2ed; z-index: 100; display: grid; place-items: center; font-weight: 600; text-align: center; padding: 24px; }
+.editing-notice { position: sticky; top: 8px; z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; margin-bottom: 20px; border: 1px solid #d7b48b; border-radius: 12px; background: #fff0d8; color: var(--ink); box-shadow: 0 3px 12px #513d1e12; font-size: 13px; line-height: 1.5; }
+.editing-notice button { min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 600px) { .editing-notice { flex-direction: column; align-items: stretch; gap: 4px; } }
 #purchase-estimate:empty { display: none; }
 .month-picker { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .month-picker h2 { margin-bottom: 5px; }

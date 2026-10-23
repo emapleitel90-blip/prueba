@@ -47,7 +47,7 @@ Las copias y datos compartidos anteriores, sin historial familiar, siguen siendo
 
 Sin variables de Supabase, funciona localmente por navegador. Para almacenamiento familiar con acceso por correo, configurar `.env.example` en desarrollo o las variables de Vercel, y seguir [supabase/README.md](supabase/README.md). Nunca usar claves secretas en variables VITE_.
 
-Las compras de varios celulares se comparten solo al activar y verificar Supabase. La actualización en otros dispositivos es manual; se detectan conflictos de edición para evitar sobrescrituras silenciosas. No es una PWA ni garantiza funcionamiento sin conexión.
+Las compras de varios celulares se comparten solo al activar y verificar Supabase. La actualización en otros dispositivos es manual; se detectan conflictos de edición para evitar sobrescrituras silenciosas. Si una lectura o guardado falla, un aviso permanece visible al desplazarse y permite actualizar los datos para recuperar la edición. «Ajustar inventario / precio» y «Sumar compra» también pueden iniciar esa recuperación: primero cargan una versión válida y después abren el producto con sus valores actuales. Los borradores de cargas fallidas se conservan; no se aplican sobre otros cambios automáticamente. Si falta la sesión, se dirige al acceso y se mantienen bloqueados los formularios. Renovar la sesión permite recuperar errores anteriores sin consultar Supabase dentro del callback de autenticación. No es una PWA ni garantiza funcionamiento sin conexión.
 
 ## Control mensual y orientación comercial
 
