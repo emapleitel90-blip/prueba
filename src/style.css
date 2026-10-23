@@ -205,6 +205,9 @@ footer button { font-size: 10px; padding: 0; }
 .check-label input { width: 20px; min-height: 20px; height: 20px; accent-color: var(--ink); }
 .package-fields { margin-top: 12px; }
 .package-help { align-self: end; margin: 0; font-size: 12px; }
+.unit-correction { padding: 16px; border: 1px solid #d9bf99; border-radius: 10px; background: #fff0d8; }
+.unit-correction h3 { margin-top: 0; }
+.unit-correction p { font-size: 13px; line-height: 1.7; }
 input[readonly] { background: #f3eee4; color: #596268; }
 .purchase-preview { padding: 16px; border-radius: 10px; background: #fff0d8; font-size: 13px; line-height: 1.8; }
 .purchase-preview:empty { display: none; }

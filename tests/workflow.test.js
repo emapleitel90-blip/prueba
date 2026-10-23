@@ -15,7 +15,7 @@ function app({shared=false,write,read,payload,authenticated=true}={}){
  let authChange,currentSession=authenticated?{user:{email:'familia@example.com'}}:null,readCount=0;
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:currentSession}}),onAuthStateChange:callback=>{authChange=callback}}}:null;
  w.mockRead=async()=>{readCount++;return read?read(structuredClone(remote),readCount):structuredClone(remote)};w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,stockUnitFactor,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -169,13 +169,45 @@ test('copias nuevas validan dimensiones y las copias anteriores siguen siendo co
  delete payload.recipes[0].items[0].unit;assert.doesNotThrow(()=>a.w.validateBackup(payload));
 });
 
-test('precio por kg con stock en gramos normaliza el costo y bloquea cambios de dimensión',()=>{
+test('precio por kg con stock en gramos normaliza el costo y exige equivalencia para otra dimensión',()=>{
  const payload=flourPayload();payload.stock[0]={...payload.stock[0],unit:'g',qty:3000,cost:2.5,min:500};
  const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=flour]').click();
  a.set('#stock','costUnit','kg');a.set('#stock','cost','2500');a.submit('#stock');
  assert.equal(a.state().stock[0].cost,2.5);assert.equal(a.state().stock[0].qty,3000);
  a.doc.querySelector('[data-edit=flour]').click();a.set('#stock','unit','litro');
- assert.equal(a.doc.querySelector('#stock [name=unit]').value,'g');assert.ok(a.alerts.length);
+ assert.equal(a.doc.querySelector('#stock [name=unit]').value,'litro');assert.equal(a.doc.querySelector('#stock-unit-correction').hidden,false);assert.equal(a.doc.querySelector('#save-stock').disabled,true);assert.equal(a.state().stock[0].unit,'g');
+});
+test('corregir unidad a litros muestra equivalencia, guarda una sola vez y permite seguir comprando',async()=>{
+ const payload={demo:false,stock:[{id:'oil',name:'Aceite',unit:'unidad',qty:15,cost:900,min:2}],recipes:[{id:'r',name:'Menú',yield:2,price:2000,items:[{id:'oil',qty:2}]}],days:[{recipe:'r',name:'Menú',date:'2026-10-23',made:2,sold:0,cost:900,price:2000,consumed:[{id:'oil',qty:2}]}],expenses:[{id:'p',kind:'stock',ingredient:'oil',qty:5,total:4500,date:'2026-10-23',detail:'Oferta',packages:{count:5,size:1,unit:'unidad'}}]};
+ const a=app({shared:true,payload});await tick();a.nav('Stock');a.doc.querySelector('[data-edit=oil]').click();a.set('#stock','unit','litro');
+ assert.equal(a.doc.querySelector('#save-stock').disabled,true);assert.equal(a.doc.querySelector('#stock [name=cost]').disabled,true);
+ a.doc.querySelector('#apply-stock-equivalence').click();assert.ok(a.alerts.at(-1).includes('equivale'));assert.equal(a.remote().version,3);
+ a.set('#stock','equivalenceQty','900');a.set('#stock','equivalenceUnit','ml');assert.ok(a.doc.querySelector('#stock-equivalence-preview').textContent.includes('13,500 litro'));
+ a.doc.querySelector('#apply-stock-equivalence').click();assert.equal(a.remote().version,3);assert.equal(a.remote().payload.stock[0].unit,'unidad');
+ assert.equal(a.doc.querySelector('#stock-unit-correction').hidden,true);assert.equal(a.doc.querySelector('#save-stock').disabled,false);assert.equal(a.doc.querySelector('#stock [name=qty]').value,'13,500');assert.equal(a.doc.querySelector('#stock [name=cost]').value,'1000,000');
+ a.submit('#stock');await tick();let saved=a.remote().payload;assert.equal(a.remote().version,4);assert.equal(saved.stock[0].qty,13.5);assert.equal(saved.stock[0].cost,1000);assert.equal(saved.stock[0].unit,'litro');assert.equal(saved.recipes[0].items[0].qty,1.8);assert.equal(saved.expenses[0].total,4500);assert.equal(saved.days[0].cost,900);assert.doesNotThrow(()=>a.w.validateBackup(saved));
+ a.nav('Compras');a.doc.querySelector('[data-purchase=p]').click();a.set('#purchase','total','4000');a.submit('#purchase');await tick();assert.equal(a.remote().payload.stock[0].qty,13.5);assert.equal(a.remote().payload.expenses[0].qty,4.5);
+ a.nav('Stock');a.doc.querySelector('[data-restock=oil]').click();a.set('#purchase','qty','1,8');a.set('#purchase','total','1800');a.submit('#purchase');await tick();saved=a.remote().payload;assert.equal(saved.stock[0].qty,15.3);assert.equal(saved.stock[0].cost,1000);assert.equal(saved.expenses.length,2);assert.equal(saved.stock[0].unitCorrections.length,1);
+});
+test('cancelar una equivalencia no cambia datos; permite corregir solo el nombre de la medida y ajustar precio',()=>{
+ const payload={demo:false,stock:[{id:'oil',name:'Aceite',unit:'unidad',qty:3,cost:2500,min:1}],recipes:[],days:[],expenses:[]};
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=oil]').click();a.set('#stock','unit','litro');a.set('#stock','equivalenceQty','1');a.doc.querySelector('#apply-stock-equivalence').click();a.doc.querySelector('#cancel-stock').click();assert.deepEqual(a.state(),payload);
+ a.doc.querySelector('[data-edit=oil]').click();a.set('#stock','unit','litro');a.set('#stock','equivalenceQty','1');a.doc.querySelector('#apply-stock-equivalence').click();a.set('#stock','qty','4,5');a.set('#stock','cost','2200');a.submit('#stock');assert.equal(a.state().stock[0].qty,4.5);assert.equal(a.state().stock[0].cost,2200);assert.equal(a.state().stock[0].unit,'litro');assert.equal(a.state().stock[0].unitCorrections[0].quantity,1);
+ // Una edición posterior conserva el registro de equivalencia.
+ a.doc.querySelector('[data-edit=oil]').click();a.set('#stock','cost','2100');a.submit('#stock');assert.equal(a.state().stock[0].unitCorrections.length,1);assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+});
+test('cambiar de medida varias veces en una edición no repite la conversión ni guarda cambios parciales',()=>{
+ const payload={demo:false,stock:[{id:'oil',name:'Aceite',unit:'unidad',qty:10,cost:900,min:1}],recipes:[{id:'r',name:'Menú',yield:1,price:2000,items:[{id:'oil',qty:1}]}],days:[],expenses:[]};
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=oil]').click();a.set('#stock','unit','litro');a.set('#stock','equivalenceQty','0,9');a.doc.querySelector('#apply-stock-equivalence').click();a.set('#stock','unit','ml');assert.equal(a.doc.querySelector('#stock [name=qty]').value,'9000');a.set('#stock','unit','litro');assert.equal(a.doc.querySelector('#stock [name=qty]').value,'9,000');
+ a.set('#stock','unit','unidad');a.set('#stock','equivalenceQty','10');a.doc.querySelector('#apply-stock-equivalence').click();a.submit('#stock');assert.equal(a.state().stock[0].qty,90);assert.equal(a.state().recipes[0].items[0].qty,9);assert.equal(a.state().stock[0].unitCorrections.length,2);assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+ const broken=structuredClone(a.state());broken.stock[0].unitCorrections[0].quantity=0;assert.throws(()=>a.w.validateBackup(broken));
+});
+test('el conteo por paquetes conserva el contenido equivalente y un conflicto no pisa datos compartidos',async()=>{
+ const payload={demo:false,stock:[{id:'oil',name:'Aceite',unit:'unidad',qty:15,cost:900,min:1}],recipes:[],days:[],expenses:[]};
+ const a=app({shared:true,payload,write:async()=>{throw Error('Otra persona guardó cambios. Actualizá los datos.')}});await tick();a.nav('Stock');a.doc.querySelector('[data-edit=oil]').click();
+ check(a,'#stock','packaged');a.set('#stock','packageCount','15');a.set('#stock','packageSize','1');a.set('#stock','unit','litro');a.set('#stock','equivalenceQty','900');a.set('#stock','equivalenceUnit','ml');a.doc.querySelector('#apply-stock-equivalence').click();
+ assert.equal(a.doc.querySelector('#stock [name=qty]').value,'13,500');assert.equal(a.doc.querySelector('#stock [name=packageSize]').value,'0,900');assert.equal(a.doc.querySelector('#stock [name=packageUnit]').value,'litro');
+ a.submit('#stock');await tick();assert.equal(a.remote().payload.stock[0].unit,'unidad');assert.equal(a.remote().version,3);const draft=JSON.parse(a.w.localStorage.getItem('filo-unsent'));assert.equal(draft.stock[0].unit,'litro');assert.equal(draft.stock[0].qty,13.5);assert.doesNotThrow(()=>a.w.validateBackup(draft));assert.equal(a.doc.querySelector('#stock [name=qty]').disabled,true);
 });
 test('litros y mililitros también convierten los precios y el consumo',()=>{
  const payload=flourPayload();payload.stock[0]={id:'flour',name:'Aceite',unit:'litro',qty:2,cost:5000,min:0};
