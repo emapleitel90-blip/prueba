@@ -25,6 +25,14 @@ function app({shared=false,write,read,payload,authenticated=true}={}){
  return {w,doc,nav,set,submit,state,alerts,remote:()=>remote,replaceRemote:next=>{remote=structuredClone(next)},readCalls:()=>readCount,emitAuth:(event,next=currentSession)=>{currentSession=next;authChange(event,next)}};
 }
 const tick=()=>new Promise(r=>setTimeout(r,20));
+test('buscador de stock ignora tildes, combina palabras y conserva edición y datos',()=>{
+ const payload={demo:false,stock:[{id:'o',name:'Orégano seco',unit:'g',qty:200,cost:10,min:5},{id:'p',name:'Pimienta negra',unit:'g',qty:100,cost:20,min:5},{id:'h',name:'Harina',unit:'kg',qty:5,cost:1000,min:1}],recipes:[],days:[],expenses:[]};
+ const a=app({payload});a.nav('Stock');a.doc.querySelector('[data-edit=o]').click();a.set('#stock','cost','12');
+ const search=value=>{const el=a.doc.querySelector('#stock-search');el.value=value;el.dispatchEvent(new a.w.Event('input',{bubbles:true}))};
+ search('  SECO orega ');assert.equal(a.doc.querySelectorAll('[data-stock-name]:not([hidden])').length,1);assert.equal(a.doc.querySelector('[data-stock-name]:not([hidden])').dataset.stockName,'Orégano seco');assert.equal(a.doc.querySelector('#stock-search-count').textContent,'1 de 3 productos');assert.equal(a.doc.querySelector('#stock [name=cost]').value,'12');assert.deepEqual(a.state(),payload);
+ search('inexistente');assert.equal(a.doc.querySelector('#stock-search-empty').hidden,false);a.doc.querySelector('#clear-stock-search').click();assert.equal(a.doc.querySelectorAll('[data-stock-name]:not([hidden])').length,3);assert.equal(a.doc.querySelector('#stock-search-empty').hidden,true);
+ search('pimi');a.nav('Hoy');a.nav('Stock');assert.equal(a.doc.querySelector('#stock-search').value,'pimi');assert.equal(a.doc.querySelector('[data-stock-name]:not([hidden])').dataset.stockName,'Pimienta negra');
+});
 function fillOrder(a,changes={}){
  a.nav('Pedidos');for(const [key,value] of Object.entries({customer:'Ana',portions:'2',...changes}))a.set('#order',key,value);
 }

@@ -30,6 +30,8 @@ npm run build
 - Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
+Stock incluye un buscador por nombre, con resultados instantáneos, contador y botón para limpiar. Admite mayúsculas, palabras parciales y búsquedas sin tildes (oregano encuentra Orégano). Filtrar no modifica datos ni descarta el formulario de inventario abierto.
+
 ## Pedidos y clientes
 
 Pedidos permite registrar nombre del cliente, menú, cantidad entera de porciones, fecha (incluidos próximos días), teléfono y horario opcionales, retiro por el cliente o entrega a domicilio con dirección obligatoria, observaciones y estado Pendiente/Listo/Entregado/Cancelado. Se puede editar, filtrar por fecha/estado, consultar todas las fechas y eliminar cargas erróneas. Cancelar conserva el historial; los pedidos del día se muestran también en Hoy. No se envían mensajes ni se exige tener un teléfono.
