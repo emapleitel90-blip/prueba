@@ -7,15 +7,16 @@ import * as measurements from '../src/units.js';
 import * as purchasing from '../src/purchasing.js';
 import * as household from '../src/family.js';
 import {recipeCosts} from '../src/costing.js';
-const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {recipeCosts} from './costing.js';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
+import * as customerOrders from '../src/orders.js';
+const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8').replace("import './style.css';",'').replace("import {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily} from './family.js';",'').replace("import {packageQuantity,purchaseChanges} from './purchasing.js';",'').replace(/^import \{units,.*from '\.\/units\.js';\n/m,'').replace("import {recipeCosts} from './costing.js';",'').replace("import {orderStatuses,orderPortions,saveOrder,removeOrder,validateOrders} from './orders.js';",'').replace("import {report,advice} from './analytics.js';",'').replace("import {cloud,readShared,writeShared} from './shared.js';",'');
 function app({shared=false,write,read,payload,authenticated=true}={}){
  const dom=new JSDOM('<div id="app"></div>',{url:'https://filo.test',runScripts:'outside-only'}),w=dom.window;
- w.recipeCosts=recipeCosts;w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
+ w.customerOrders=customerOrders;w.recipeCosts=recipeCosts;w.report=report;w.advice=advice;w.purchasing=purchasing;w.household=household;w.measurements=measurements;if(payload&&!shared)w.localStorage.setItem('filo-v1',JSON.stringify(payload));w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};const alerts=[];w.alert=m=>alerts.push(m);w.confirm=()=>true;
  let remote={payload:payload||{demo:false,stock:[{id:'beef',name:'Carne',unit:'kg',qty:2,cost:9000,min:0}],recipes:[],days:[],expenses:[]},version:3};
  let authChange,currentSession=authenticated?{user:{email:'familia@example.com'}}:null,readCount=0;
  w.mockCloud=shared?{auth:{getSession:async()=>({data:{session:currentSession}}),onAuthStateChange:callback=>{authChange=callback}}}:null;
  w.mockRead=async()=>{readCount++;return read?read(structuredClone(remote),readCount):structuredClone(remote)};w.mockWrite=write|| (async(payload,v)=>{assert.equal(v,remote.version);remote={payload:structuredClone(payload),version:v+1};return remote.version});
- w.eval(`const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,stockUnitFactor,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
+ w.eval(`const {orderStatuses,orderPortions,saveOrder,removeOrder,validateOrders}=window.customerOrders;const {familyPortions,familyEntry,saveFamily,removeFamily,validateFamily}=window.household;const {packageQuantity,purchaseChanges}=window.purchasing;const {units,unitLabel,compatibleUnits,compatible,convertQuantity,formatQuantity,inputQuantity,recipeQuantity,stockUnitFactor,changeStockUnit}=window.measurements;const report=window.report,advice=window.advice;const cloud=window.mockCloud,readShared=window.mockRead,writeShared=window.mockWrite;\n${source}\nwindow.currentForTest=state;`);
  const doc=w.document;
  const nav=name=>[...doc.querySelectorAll('[data-tab]')].find(b=>b.dataset.tab===name).click();
  const set=(form,name,value)=>{const el=doc.querySelector(form).elements[name];el.value=value;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
@@ -24,6 +25,47 @@ function app({shared=false,write,read,payload,authenticated=true}={}){
  return {w,doc,nav,set,submit,state,alerts,remote:()=>remote,replaceRemote:next=>{remote=structuredClone(next)},readCalls:()=>readCount,emitAuth:(event,next=currentSession)=>{currentSession=next;authChange(event,next)}};
 }
 const tick=()=>new Promise(r=>setTimeout(r,20));
+function fillOrder(a,changes={}){
+ a.nav('Pedidos');for(const [key,value] of Object.entries({customer:'Ana',portions:'2',...changes}))a.set('#order',key,value);
+}
+test('Pedidos guarda cliente, porciones, entrega, horario y notas, y los muestra en Hoy',async()=>{
+ const a=app(),before=structuredClone(a.w.currentForTest);fillOrder(a,{customer:'Ana <img src=x onerror=alert(1)>',fulfillment:'delivery',address:'Calle 123, 2° A',phone:'3511234567',time:'12:30',notes:'Sin cebolla'});
+ assert.equal(a.doc.querySelector('#order-address').hidden,false);assert.equal(a.doc.querySelector('#order [name=address]').required,true);a.submit('#order');await tick();
+ let saved=a.state();const created=saved.orders[0].createdAt;assert.equal(saved.orders.length,1);assert.equal(saved.orders[0].address,'Calle 123, 2° A');assert.equal(saved.orders[0].portions,2);assert.deepEqual(saved.stock,before.stock);assert.deepEqual(saved.days,before.days);assert.equal(a.doc.querySelector('.order-card img'),null);assert.doesNotThrow(()=>a.w.validateBackup(saved));
+ a.nav('Hoy');assert.ok(a.doc.querySelector('.orders-today').textContent.includes('Calle 123'));assert.ok(a.doc.querySelector('.orders-today').textContent.includes('12:30'));a.doc.querySelector('[data-order-edit]').click();assert.equal(a.doc.querySelector('#order-title').textContent,'Editar pedido');assert.equal(a.doc.querySelector('#order [name=customer]').value,saved.orders[0].customer);
+ a.set('#order','fulfillment','pickup');assert.equal(a.doc.querySelector('#order [name=address]').disabled,true);a.set('#order','portions','3');a.submit('#order');await tick();saved=a.state();assert.equal(saved.orders.length,1);assert.equal(saved.orders[0].address,'');assert.equal(saved.orders[0].portions,3);assert.equal(saved.orders[0].createdAt,created);assert.ok(a.doc.querySelector('.order-card').textContent.includes('Retira el cliente'));
+});
+test('pedidos futuros, filtros, estados y cancelación conservan el historial sin registrar ventas',async()=>{
+ const a=app();fillOrder(a,{date:'2099-11-01'});a.submit('#order');await tick();const created=a.state().orders[0].createdAt;
+ a.doc.querySelector('[data-order-status=ready]').click();await tick();assert.equal(a.state().orders[0].status,'ready');a.doc.querySelector('[data-order-status=delivered]').click();await tick();assert.equal(a.state().orders[0].status,'delivered');assert.equal(a.state().orders[0].createdAt,created);assert.equal(a.state().days.length,0);
+ a.doc.querySelector('#orders-date').value='2099-11-02';a.doc.querySelector('#orders-date').dispatchEvent(new a.w.Event('change'));assert.equal(a.doc.querySelectorAll('.order-card').length,0);a.doc.querySelector('#orders-all-dates').click();assert.equal(a.doc.querySelectorAll('.order-card').length,1);
+ a.doc.querySelector('[data-order-edit]').click();a.set('#order','status','cancelled');a.submit('#order');await tick();assert.equal(a.state().orders.length,1);assert.equal(a.state().orders[0].status,'cancelled');assert.ok(a.doc.body.textContent.includes('0 porciones sin contar cancelados'));
+ a.doc.querySelector('#orders-status').value='pending';a.doc.querySelector('#orders-status').dispatchEvent(new a.w.Event('change'));assert.equal(a.doc.querySelectorAll('.order-card').length,0);a.doc.querySelector('#orders-status').value='all';a.doc.querySelector('#orders-status').dispatchEvent(new a.w.Event('change'));a.doc.querySelector('[data-order-delete]').click();await tick();assert.equal(a.state().orders.length,0);assert.equal(a.state().days.length,0);
+});
+test('asignar un pedido a producción protege porciones familiares y evita eliminar la jornada vinculada',async()=>{
+ const a=app();a.set('#day','made','10');a.set('#day','sold','3');a.submit('#day');const stock=a.state().stock;
+ fillOrder(a,{portions:'8',day:'day:0'});a.submit('#order');await tick();let saved=a.state();assert.ok(saved.days[0].id);assert.equal(saved.orders[0].day,saved.days[0].id);assert.equal(saved.days[0].sold,3);assert.deepEqual(saved.stock,stock);
+ a.nav('Hoy');a.doc.querySelector('[data-delete-day]').click();assert.ok(a.alerts.at(-1).includes('pedidos vinculados'));assert.equal(a.state().days.length,1);
+ a.nav('Familia');a.set('#family','kind','prepared');a.set('#family','portions','4');a.submit('#family');await tick();assert.ok(a.alerts.at(-1).includes('Quedan 2'));a.set('#family','portions','2');a.submit('#family');await tick();assert.equal(a.state().family[0].portions,2);
+ a.nav('Pedidos');a.doc.querySelector('[data-order-edit]').click();a.set('#order','portions','9');a.submit('#order');await tick();assert.ok(a.alerts.at(-1).includes('superan'));assert.equal(a.state().orders[0].portions,8);assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+ a.set('#order','status','cancelled');a.submit('#order');await tick();a.nav('Familia');a.doc.querySelector('[data-family-edit]').click();a.set('#family','portions','4');a.submit('#family');await tick();assert.equal(a.state().family[0].portions,4);
+});
+test('pedido valida cliente, dirección y porciones, permite cancelar el formulario y conserva copias anteriores',async()=>{
+ const a=app();fillOrder(a,{fulfillment:'delivery'});
+ for(const [key,value] of [['customer',''],['customer','Ana'],['portions','2,5'],['portions','-1'],['portions','2']]){a.set('#order',key,value);a.submit('#order');await tick();assert.equal(a.state()?.orders,undefined)}
+ assert.ok(a.alerts.some(message=>message.includes('dirección')));a.set('#order','address','Calle 123');a.doc.querySelector('#cancel-order').click();assert.equal(a.state()?.orders,undefined);assert.doesNotThrow(()=>a.w.validateBackup(a.w.currentForTest));
+ fillOrder(a);a.submit('#order');await tick();const bad=a.state();bad.orders[0].day='missing';assert.throws(()=>a.w.validateBackup(bad));
+});
+test('pedidos compartidos guardan con versión y un conflicto conserva el borrador y bloquea nuevas escrituras',async()=>{
+ const payload={demo:false,stock:[],recipes:[{id:'r',name:'Menú',yield:1,price:1000,items:[{id:'s',qty:1,unit:'unidad'}]}],days:[],expenses:[]};payload.stock=[{id:'s',name:'Envase',unit:'unidad',qty:10,cost:100,min:0}];
+ const a=app({shared:true,payload});await tick();fillOrder(a,{customer:'Cliente compartido',fulfillment:'delivery',address:'Destino 123'});a.submit('#order');await tick();assert.equal(a.remote().version,4);assert.equal(a.remote().payload.orders[0].customer,'Cliente compartido');assert.doesNotThrow(()=>a.w.validateBackup(a.remote().payload));
+ const b=app({shared:true,payload:a.remote().payload,write:async()=>{throw Error('Otra persona guardó cambios.')}});await tick();b.nav('Pedidos');b.doc.querySelector('[data-order-edit]').click();b.set('#order','portions','3');b.submit('#order');await tick();assert.equal(b.remote().payload.orders[0].portions,2);assert.equal(JSON.parse(b.w.localStorage.getItem('filo-unsent')).orders[0].portions,3);assert.equal(b.doc.querySelector('[data-order-edit]').disabled,true);assert.ok(!b.doc.body.textContent.includes('Pedido guardado con los datos'));
+ const c=app({shared:true,authenticated:false});await tick();c.nav('Pedidos');assert.equal(c.doc.querySelector('#order'),null);assert.ok(c.doc.body.textContent.includes('Ingresá con un correo autorizado'));
+});
+test('un pedido sin jornada no bloquea corregir una producción distinta y conserva su cliente',async()=>{
+ const a=app();fillOrder(a,{customer:'Cliente por preparar'});a.submit('#order');await tick();a.nav('Hoy');a.set('#day','made','5');a.set('#day','sold','0');a.submit('#day');const stock=a.state().stock;
+ a.doc.querySelector('[data-delete-day]').click();await tick();assert.equal(a.state().days.length,0);assert.equal(a.state().orders[0].customer,'Cliente por preparar');assert.notDeepEqual(a.state().stock,stock);assert.doesNotThrow(()=>a.w.validateBackup(a.state()));
+});
 test('compra crea ingrediente, admite coma, calcula costo y edición aplica solo diferencia',()=>{
  const a=app();a.nav('Compras');a.set('#purchase','ingredient','__new');a.set('#purchase','newName','Carne suelta');a.set('#purchase','qty','0,9');a.set('#purchase','total','8100');a.submit('#purchase');
  let s=a.state();const item=s.stock.find(i=>i.name==='Carne suelta');assert.equal(item.qty,.9);assert.equal(item.cost,9000);assert.equal(s.expenses[0].ingredient,item.id);

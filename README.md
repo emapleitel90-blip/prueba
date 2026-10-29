@@ -30,6 +30,16 @@ npm run build
 - Producción con descuento proporcional de stock y costos históricos. Las ventas iniciales se registran con la producción y luego se pueden actualizar desde «Jornadas de hoy» o «Jornadas del mes» en Resumen. Se carga el total acumulado vendido (entre 0 y las porciones preparadas), sin repetir el consumo de ingredientes ni cambiar el costo o el precio históricos. La producción registrada no se edita con esta opción.
 - Resultado estimado, sobrantes y costos por menú; exportación e importación JSON validada. Importar reemplaza los datos, no combina versiones.
 
+## Pedidos y clientes
+
+Pedidos permite registrar nombre del cliente, menú, cantidad entera de porciones, fecha (incluidos próximos días), teléfono y horario opcionales, retiro por el cliente o entrega a domicilio con dirección obligatoria, observaciones y estado Pendiente/Listo/Entregado/Cancelado. Se puede editar, filtrar por fecha/estado, consultar todas las fechas y eliminar cargas erróneas. Cancelar conserva el historial; los pedidos del día se muestran también en Hoy. No se envían mensajes ni se exige tener un teléfono.
+
+Se pueden tomar pedidos antes de cocinar, sin jornada asignada. Cuando se registra la producción en Hoy, se puede editar cada pedido y vincularlo a una jornada del mismo menú, preparada hasta la fecha de entrega. La vinculación agrega un identificador estable a jornadas antiguas que no lo tenían. La suma de pedidos no cancelados de una jornada no puede superar su producción menos las porciones de casa. Los consumos familiares de viandas preparadas respetan el mayor entre ventas registradas y pedidos asignados, para poder identificar ventas que ya estaban cargadas sin sumar dos veces sus porciones. No se pueden eliminar jornadas mientras tengan pedidos vinculados, incluso cancelados: primero se reasignan o se eliminan las cargas erróneas.
+
+**Los pedidos son una agenda de porciones y entregas; no son un registro de cobros.** Guardar, editar, cancelar, eliminar o marcar entregado un pedido no cambia las ventas, precios históricos ni el stock de ingredientes. Las ventas continúan cargándose desde Actualizar ventas en Hoy/Resumen. No se distinguen pagos o cuentas por cobrar en este módulo. Los pedidos sin jornada no reservan stock ni garantizan producción disponible.
+
+Los datos se guardan en el mismo documento familiar, con las mismas restricciones de acceso y control de versión. Las copias anteriores sin `orders` siguen siendo válidas. Exportar/importar incluye pedidos y valida sus referencias, estados y cantidades. Los datos personales del cliente permanecen dentro del acceso familiar existente. Es necesario recargar los dispositivos para usar la actualización.
+
 ## Porcentaje de gastos adicionales en recetas
 
 En Recetas → Editar receta se puede indicar «Gastos adicionales (%)» o usar el botón «Aplicar 10% de gastos adicionales». El porcentaje se aplica una sola vez sobre el costo de todos los ingredientes y se divide por el rendimiento. Ej.: $2000 de ingredientes por porción + 10% ($200) = $2200 de costo presupuestado por vianda. Admite coma o punto y porcentajes decimales. Cero deja el costo de ingredientes; las recetas anteriores parten de cero hasta que se elija y guarde un porcentaje.

@@ -218,12 +218,23 @@ input[readonly] { background: #f3eee4; color: #596268; }
 #family-ingredients > p { font-size: 12px; }
 #family-estimate { margin: 0; }
 @media (max-width: 600px) {
- nav { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+ nav { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
  .nav { padding: 6px 3px; min-width: 0; font-size: 10px; }
  .section-title { flex-wrap: wrap; }
  .family-record { flex-wrap: wrap; gap: 10px; }
  .family-record > div { min-width: 0; }
 }
+.order-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; }
+.order-card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: #fffaf1; min-width: 0; overflow-wrap: anywhere; }
+.order-card h3 { margin: 0; font-size: 17px; }
+.order-card .section-title { gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.order-card p { font-size: 13px; line-height: 1.7; margin: 10px 0; }
+.order-card small { display: block; color: #626a70; font-size: 11px; }
+.order-destination { padding: 10px 12px; background: #f8ead4; border-radius: 8px; }
+.order-notes { white-space: pre-wrap; }
+.order-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 12px; }
+.order-actions button { min-height: 44px; padding: 6px 0; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+#order textarea { width: 100%; resize: vertical; font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fffdf8; }
 @media (max-width: 600px) {
  .ingredient-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; gap: 10px; }
  .ingredient-row label:first-child { grid-column: 1 / 3; }

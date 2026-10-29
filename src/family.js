@@ -1,4 +1,5 @@
 import {convertQuantity,compatible} from './units.js';
+import {orderPortions} from './orders.js';
 
 export const familyPortions=(state,day,exceptId)=>day.id?(state.family||[]).filter(x=>x.kind==='prepared'&&x.day===day.id&&(exceptId==null||x.id!==exceptId)).reduce((sum,x)=>sum+x.portions,0):0;
 const validDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
@@ -28,8 +29,8 @@ export function familyEntry(state,input,now){
  if(input.kind==='prepared'){
   const day=state.days.find(d=>d.id&&d.id===input.day)||(/^day:\d+$/.test(input.day||'')?state.days[Number(input.day.slice(4))]:null);
   if(!day||input.date<day.date)throw Error('Elegí una jornada que ya estuviera preparada en la fecha del consumo.');
-  const available=day.made-day.sold-familyPortions(state,day,previous?.id);
-  if(input.portions>available)throw Error(`Quedan ${available} porciones disponibles de esa jornada. Revisá las ventas y los consumos familiares.`);
+  const available=day.made-Math.max(day.sold,orderPortions(state,day))-familyPortions(state,day,previous?.id);
+  if(input.portions>available)throw Error(`Quedan ${available} porciones disponibles de esa jornada. Revisá las ventas, los pedidos y los consumos familiares.`);
   entry.day=day.id||input.day;entry.name=day.name;entry.total=day.cost*input.portions;
  }else{
   let items;
@@ -116,5 +117,5 @@ export function validateFamily(state){
    if(entry.kind==='recipe')quantities(state,entry.recipeItems);
   }else throw Error('Tipo de consumo familiar inválido.');
  }
- for(const day of state.days)if(familyPortions(state,day)>day.made-day.sold)throw Error('Los consumos familiares superan las viandas disponibles.');
+ for(const day of state.days)if(familyPortions(state,day)>day.made-Math.max(day.sold,orderPortions(state,day)))throw Error('Los consumos familiares superan las viandas disponibles. Revisá también los pedidos.');
 }
